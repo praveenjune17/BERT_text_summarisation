@@ -8,7 +8,7 @@ from abstractive_summarizer import AbstractiveSummarization
 
 
 
-model = AbstractiveSummarization(
+draft_summary_model = AbstractiveSummarization(
                                 num_layers=config.num_layers, 
                                 d_model=config.d_model, 
                                 num_heads=config.num_heads, 
@@ -16,10 +16,25 @@ model = AbstractiveSummarization(
                                 vocab_size=config.input_vocab_size,
                                 input_seq_len=config.doc_length, 
                                 output_seq_len=config.summ_length, 
-                                rate=h_parms.dropout_rate,
-                                add_stage_2=config.add_stage_2
+                                add_stage_1=True,
+                                add_stage_2=False,
+                                rate=h_parms.dropout_rate
                                 )
-bert_layer = model.bert
+
+refine_summary_model = AbstractiveSummarization(
+                                num_layers=config.num_layers, 
+                                d_model=config.d_model, 
+                                num_heads=config.num_heads, 
+                                dff=config.dff, 
+                                vocab_size=config.input_vocab_size,
+                                input_seq_len=config.doc_length, 
+                                output_seq_len=config.summ_length, 
+                                add_stage_1=False,
+                                add_stage_2=True,
+                                rate=h_parms.dropout_rate
+                                )
+
+bert_layer = draft_summary_model.bert
 vocab_file = bert_layer.resolved_object.vocab_file.asset_path.numpy()
 do_lower_case = bert_layer.resolved_object.do_lower_case.numpy()
 tokenizer = FullTokenizer(vocab_file, do_lower_case)

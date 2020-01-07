@@ -8,7 +8,7 @@ import time
 import os
 import shutil
 import tensorflow_datasets as tfds
-from tensorflow.keras.mixed_precision import experimental as mixed_precision
+#from tensorflow.keras.mixed_precision import experimental as mixed_precision
 from preprocess import create_train_data
 from transformer import Transformer, create_masks
 from hyper_parameters import h_parms
@@ -16,7 +16,7 @@ from configuration import config
 from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer import tokenizer, model
+from create_tokenizer import tokenizer, draft_summary_model, refine_summary_model
 from abstractive_summarizer import AbstractiveSummarization
 from local_tf_ops import *
 
@@ -42,17 +42,24 @@ accumulators = []
 
 @tf.function(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
-  tar_inp = tar[0][:, :-1]
-  tar_real = tar[0][:, 1:]
+  #tar_inp = tar[0][:, :-1]
+  #tar_real = tar[0][:, 1:]
   #enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
   with tf.GradientTape() as tape:
-    predictions, attention_weights, dec_output = model(
-                                                       inp, 
-                                                       tar, 
-                                                       training=True
-                                                       )
-    train_variables = model.trainable_variables
-    loss = loss_function(tar_real, predictions)
+    draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(
+                                                                                       inp, 
+                                                                                       tar, 
+                                                                                       training=True
+                                                                                       )
+    refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
+                                                                                       inp, 
+                                                                                       tar, 
+                                                                                       training=True
+                                                                                       )
+    train_variables = draft_summary_model.trainable_variables + refine_summary_model
+    draft_summary_loss = loss_function(tar[0][:, 1:, :], draft_predictions)
+    refine_summary_loss = loss_function(tar[0][:, :-1, :], refine_predictions)
+    loss = draft_summary_loss + refine_summary_loss
     scaled_loss = optimizer.get_scaled_loss(loss)
   scaled_gradients  = tape.gradient(scaled_loss, train_variables)
   gradients = optimizer.get_unscaled_gradients(scaled_gradients)
@@ -71,19 +78,25 @@ def train_step(inp, tar, grad_accum_flag):
     for accumulator in (accumulators):
         accumulator.assign(tf.zeros_like(accumulator))
   train_loss(loss)
-  train_accuracy(tar_real, predictions)  
+  train_accuracy(tar[0][:, 1:, :], draft_predictions)
+  train_accuracy(tar[0][:, :-1, :], refine_predictions)  
   
 @tf.function(input_signature=val_step_signature)
 def val_step(inp, tar, epoch, create_summ):
-  tar_inp = tar[0][:, :-1]
-  tar_real = tar[0][:, 1:]
-  #enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
-  predictions, attention_weights, dec_output = model(
-                                                     inp, 
-                                                     tar, 
-                                                     training=False
-                                                     )
-  loss = loss_function(tar_real, predictions)
+
+  draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(
+                                                                                     inp, 
+                                                                                     tar, 
+                                                                                     training=False
+                                                                                     )
+  refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
+                                                                                         inp, 
+                                                                                         tar, 
+                                                                                         training=False
+                                                                                         )
+  draft_summary_loss = loss_function(tar[0][:, 1:, :], draft_predictions)
+  refine_summary_loss = loss_function(tar[0][:, :-1, :], refine_predictions)
+  loss = draft_summary_loss + refine_summary_loss
   validation_loss(loss)
   validation_accuracy(tar_real, predictions)
   if create_summ: 

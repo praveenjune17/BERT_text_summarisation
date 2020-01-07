@@ -25,7 +25,7 @@ class AbstractiveSummarization(tf.keras.Model):
     Pretraining-Based Natural Language Generation for Text Summarization 
     https://arxiv.org/pdf/1902.09243.pdf
     """
-    def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, input_seq_len, output_seq_len, rate=0.1, add_stage_2=config.add_stage_2):
+    def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, input_seq_len, output_seq_len, add_stage_1, add_stage_2, rate=0.1):
         super(AbstractiveSummarization, self).__init__()
         
         self.input_seq_len = input_seq_len
@@ -63,15 +63,16 @@ class AbstractiveSummarization(tf.keras.Model):
 
         # (batch_size, seq_len, d_bert)
         enc_output = self.bert((input_ids, input_mask, input_segment_ids))[1] # index 1 returns the sequence output
-        
-        # (batch_size, seq_len, d_bert)
-        embeddings = self.embedding(target_ids) 
 
-        # (batch_size, seq_len, d_bert), (_)            
-        dec_output, attention_dist = self.decoder(embeddings, enc_output, training, combined_mask, dec_padding_mask)
+        if add_stage_1:        
+            # (batch_size, seq_len, d_bert)
+            embeddings = self.embedding(target_ids) 
 
-        # (batch_size, seq_len, vocab_len)
-        logits = self.final_layer(dec_output)
+            # (batch_size, seq_len, d_bert), (_)            
+            dec_output, attention_dist = self.decoder(embeddings, enc_output, training, combined_mask, dec_padding_mask)
+
+            # (batch_size, seq_len, vocab_len)
+            logits = self.final_layer(dec_output)
 
         if add_stage_2:
             N = tf.shape(enc_output)[0]
@@ -133,7 +134,7 @@ class AbstractiveSummarization(tf.keras.Model):
                                             attention_dist, 
                                             input_ids, 
                                             tf.shape(input_ids)[1], 
-                                            tf.shape(embeddings)[1], 
+                                            tf.shape(target_ids)[1], 
                                             training=training
                                             )
         return logits, attention_dist, dec_outputs
