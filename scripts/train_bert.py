@@ -16,7 +16,7 @@ from configuration import config
 from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer import tokenizer
+from create_tokenizer import tokenizer, model
 from abstractive_summarizer import AbstractiveSummarization
 from local_tf_ops import *
 
@@ -28,29 +28,27 @@ train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
-model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                input_seq_len=config.input_vocab_size, 
-                                target_vocab_size=config.target_vocab_size, 
-                                output_seq_len=h_parms.dropout_rate
-                                )
+# model = AbstractiveSummarization(
+#                                 num_layers=config.num_layers, 
+#                                 d_model=config.d_model, 
+#                                 num_heads=config.num_heads, 
+#                                 dff=config.dff, 
+#                                 vocab_size=config.input_vocab_size,
+#                                 input_seq_len=config.doc_length, 
+#                                 output_seq_len=config.summ_length, 
+#                                 rate=h_parms.dropout_rate
+#                                 )
 
 
 @tf.function(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
-  tar_inp = tar[:, :-1]
-  tar_real = tar[:, 1:]
-  enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
+  tar_inp = tar[0][:, :-1]
+  tar_real = tar[0][:, 1:]
+  #enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
   with tf.GradientTape() as tape:
     predictions, attention_weights, dec_output = model(
                                                        inp, 
-                                                       tar_inp, 
-                                                       enc_padding_mask, 
-                                                       combined_mask, 
-                                                       dec_padding_mask,
+                                                       tar, 
                                                        training=True
                                                        )
     train_variables = model.trainable_variables
@@ -77,15 +75,12 @@ def train_step(inp, tar, grad_accum_flag):
   
 @tf.function(input_signature=val_step_signature)
 def val_step(inp, tar, epoch, create_summ):
-  tar_inp = tar[:, :-1]
-  tar_real = tar[:, 1:]
-  enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
+  tar_inp = tar[0][:, :-1]
+  tar_real = tar[0][:, 1:]
+  #enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
   predictions, attention_weights, dec_output = model(
                                                      inp, 
-                                                     tar_inp, 
-                                                     enc_padding_mask, 
-                                                     combined_mask, 
-                                                     dec_padding_mask,
+                                                     tar, 
                                                      training=False
                                                      )
   loss = loss_function(tar_real, predictions)
@@ -120,9 +115,11 @@ for epoch in range(h_parms.epochs):
   train_accuracy.reset_states()
   validation_loss.reset_states()
   validation_accuracy.reset_states()
-  for (batch, (inp, tar)) in enumerate(train_dataset):
+  for (batch, (input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids)) in enumerate(train_dataset):
   # the target is shifted right during training hence its shape is subtracted by 1
   # not able to do this inside tf.function since it doesn't allow this operation
+    inp = input_ids, input_mask, input_segment_ids
+    tar = target_ids, target_mask, target_segment_ids
     grad_accum_flag = True if (batch+1)%h_parms.accumulation_steps == 0 else False
     train_step(inp, tar, grad_accum_flag)
     batch_run_check(

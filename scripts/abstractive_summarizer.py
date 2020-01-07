@@ -1,8 +1,9 @@
 import tensorflow as tf
 import tensorflow_hub as hub
-from create_tokenizer import BERT_MODEL_URL
+from tensorflow.keras.initializers import Constant
 from transformer import create_masks, Decoder, Pointer_Generator
 from creates import log
+from configuration import config
 
 BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
 
@@ -24,7 +25,7 @@ class AbstractiveSummarization(tf.keras.Model):
     Pretraining-Based Natural Language Generation for Text Summarization 
     https://arxiv.org/pdf/1902.09243.pdf
     """
-    def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, input_seq_len, output_seq_len, rate=0.1):
+    def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, input_seq_len, output_seq_len, rate=0.1, add_stage_2=config.add_stage_2):
         super(AbstractiveSummarization, self).__init__()
         
         self.input_seq_len = input_seq_len
@@ -49,8 +50,7 @@ class AbstractiveSummarization(tf.keras.Model):
                 
         self.final_layer = tf.keras.layers.Dense(vocab_size)
 
-    def call(self, inp, tar, enc_padding_mask, 
-           look_ahead_mask, dec_padding_mask, training):
+    def call(self, inp, tar, training):
         # (batch_size, seq_len) x3
         input_ids, input_mask, input_segment_ids = inp
         
@@ -73,7 +73,7 @@ class AbstractiveSummarization(tf.keras.Model):
         # (batch_size, seq_len, vocab_len)
         logits = self.final_layer(dec_output)
 
-        if config.add_stage_2:
+        if add_stage_2:
             N = tf.shape(enc_output)[0]
             T = self.output_seq_len
             # since we are using teacher forcing we do not need an autoregressice mechanism here
@@ -126,14 +126,14 @@ class AbstractiveSummarization(tf.keras.Model):
             #                    axis=1
             #                    )
 
-            if config.copy_gen: 
-                logits = self.pointer_generator(
-                                                dec_output, 
-                                                logits, 
-                                                attention_dist, 
-                                                input_ids, 
-                                                tf.shape(input_ids)[1], 
-                                                tf.shape(embeddings)[1], 
-                                                training=training
-                                                )
+        if config.copy_gen: 
+            logits = self.pointer_generator(
+                                            dec_output, 
+                                            logits, 
+                                            attention_dist, 
+                                            input_ids, 
+                                            tf.shape(input_ids)[1], 
+                                            tf.shape(embeddings)[1], 
+                                            training=training
+                                            )
         return logits, attention_dist, dec_outputs

@@ -7,11 +7,11 @@ hyp = {
      'copy_gen':True,
      'create_hist':False,             # create histogram of summary length and # of tokens per batch
      'doc_length': 512,
-     'd_model': 512,                  # the projected word vector dimension
-     'dff': 512,                      # feed forward network hidden parameters
+     'd_model': 768,                  # the projected word vector dimension
+     'dff': 2048,                      # feed forward network hidden parameters
      'early_stop' : True,
      'init_tolerance':0,
-     'input_vocab_size': 8263,        # total vocab size + start and end token
+     'input_vocab_size': 30522,        # total vocab size + start and end token
      'last_recorded_value': None,
      'monitor_metric' : 'combined_metric',
      'monitor_only_after': 1,        # monitor the monitor_metric only after this epoch                                           
@@ -19,12 +19,12 @@ hyp = {
      'num_examples_to_train': None,   #If None then all the examples in the dataset will be used to train
      'num_examples_to_infer': None,
      'num_heads': 8,                  # the number of heads in the multi-headed attention unit
-     'num_layers': 3,                 # number of transformer blocks
+     'num_layers': 8,                 # number of transformer blocks
      'print_chks': 50,                # print training progress per number of batches specified
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
      'summ_length': 72,
-     'target_vocab_size': 8263,       # total vocab size + start and end token
+     'target_vocab_size': 30522,       # total vocab size + start and end token
      'test_size': 0.05,               # test set split size
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used
      'tolerance_threshold': 5,        # tolerance counter used for early stopping
