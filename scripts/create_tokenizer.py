@@ -1,10 +1,15 @@
-# -*- coding: utf-8 -*-
+import tensorflow as tf
+import tensorflow_hub as hub
 import pandas as pd
-import os
-import tensorflow_datasets as tfds
-from input_path import file_path 
-from configuration import config
-from creates import log
+
+from bert_tokenization import FullTokenizer
+
+BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
+bert_layer = hub.KerasLayer(BERT_MODEL_URL,
+                            trainable=True)
+vocab_file = bert_layer.resolved_object.vocab_file.asset_path.numpy()
+do_lower_case = bert_layer.resolved_object.do_lower_case.numpy()
+tokenizer = FullTokenizer(vocab_file, do_lower_case)
 
 def create_dataframe(path, num_examples):
     df = pd.read_csv(path)
@@ -13,31 +18,3 @@ def create_dataframe(path, num_examples):
     df = df[:num_examples]
     assert not df.isnull().any().any(), 'dataset contains  nans'
     return (df["Document"].values, df["Summary"].values)
-
-if os.path.exists(file_path.subword_vocab_path+'.subwords'):
-  tokenizer_en = tfds.features.text.SubwordTextEncoder.load_from_file(file_path.subword_vocab_path)
-else:
-  try:
-    if os.path.split(file_path.subword_vocab_path)[1] + '.subwords' in os.listdir(file_path.G_drive_vocab_path):
-      new_vocab_path = os.path.join(file_path.G_drive_vocab_path, os.path.split(file_path.subword_vocab_path)[1])
-      tokenizer_en = tfds.features.text.SubwordTextEncoder.load_from_file(new_vocab_path)
-  except FileNotFoundError:
-    log.warning('Vocab file not available in G-drive, Did you mount G-drive and specify the correct G-drive path? ')
-    try:
-      os.makedirs(os.path.split(file_path.subword_vocab_path)[0])
-    except FileExistsError:
-      pass
-    log.info('Building vocab file from the training set')
-    if config.use_tfds:
-      examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True)
-      train_examples = examples['train']
-      tokenizer_en = tfds.features.text.SubwordTextEncoder.build_from_corpus(
-              (doc.numpy() for doc, _ in train_examples), target_vocab_size=2**13)
-    else:
-      doc, summ = create_dataframe(file_path.train_csv_path, None)
-      tokenizer_en = tfds.features.text.SubwordTextEncoder.build_from_corpus(
-                (doc for doc, _ in zip(doc, summ)), target_vocab_size=2**13)
-    tokenizer_en.save_to_file(file_path.subword_vocab_path)
-             
-log.info('subword vocab file loaded')
-assert(tokenizer_en.vocab_size+2 == config.input_vocab_size== config.target_vocab_size),f' *vocab size in configuration script should be {tokenizer_en.vocab_size+2}'

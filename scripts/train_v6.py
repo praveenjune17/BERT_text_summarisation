@@ -16,7 +16,7 @@ from configuration import config
 from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer import tokenizer_en
+from create_tokenizer import tokenizer
 from beam_search import beam_search
 from local_tf_ops import *
 
@@ -41,8 +41,8 @@ model = Transformer(
 def beam_search_eval(document, summary, beam_size):
     batch, sum_seq_len = summary.shape
     #print(f'sum_seq_len here {sum_seq_len}')
-    start = [tokenizer_en.vocab_size] * batch
-    end = [tokenizer_en.vocab_size+1]
+    start = [tokenizer.vocab_size] * batch
+    end = [tokenizer.vocab_size+1]
     doc_input = tf.tile(document, multiples=[beam_size, 1])
     with tf.GradientTape() as tape:
       def decoder_query(output):

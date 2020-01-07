@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import time
 from hyper_parameters import h_parms
-from create_tokenizer import tokenizer_en
+from create_tokenizer import tokenizer
 from configuration import config
 from preprocess import tf_encode
   
@@ -70,8 +70,8 @@ def hist_summary_length(tf_dataset, num_of_examples, samples_to_try=0.1, split='
 
 def beam_search_train(inp_sentences, beam_size):
   
-  start = [tokenizer_en.vocab_size] * inp_sentences.shape[0]
-  end = [tokenizer_en.vocab_size+1]
+  start = [tokenizer.vocab_size] * inp_sentences.shape[0]
+  end = [tokenizer.vocab_size+1]
   encoder_input = tf.tile(inp_sentences, multiples=[beam_size, 1])
   def decoder_query(output):
 
@@ -112,7 +112,7 @@ if __name__== '__main__':
   if config.show_detokenized_samples:
     inp, tar = next(iter(examples['train']))
     for ip,ta in zip(inp.numpy(), tar.numpy()):
-      print(tokenizer_en.decode([i for i in ta if i < tokenizer_en.vocab_size]))
-      print(tokenizer_en.decode([i for i in ip if i < tokenizer_en.vocab_size]))
+      print(tokenizer.decode([i for i in ta if i < tokenizer.vocab_size]))
+      print(tokenizer.decode([i for i in ip if i < tokenizer.vocab_size]))
       break
     

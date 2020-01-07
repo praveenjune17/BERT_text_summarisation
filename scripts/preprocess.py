@@ -2,48 +2,126 @@
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 import tensorflow_datasets as tfds
+from functools import partial
 from hyper_parameters import h_parms
 from configuration import config
 from input_path import file_path
-from create_tokenizer import tokenizer_en, create_dataframe
+from create_tokenizer import tokenizer, create_dataframe
 from creates import log
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-def encode(doc, summary):
-    lang1 = [tokenizer_en.vocab_size] + tokenizer_en.encode(
-    doc.numpy()) + [tokenizer_en.vocab_size+1]
-    lang2 = [tokenizer_en.vocab_size] + tokenizer_en.encode(
-    summary.numpy()) + [tokenizer_en.vocab_size+1]
-    return lang1, lang2
+# Special Tokens
+UNK_ID = 100
+CLS_ID = 101
+SEP_ID = 102
+MASK_ID = 103
+
+
+def pad(l, n, pad=0):
+    """
+    Pad the list 'l' to have size 'n' using 'padding_element'
+    """
+    pad_with = (0, max(0, n - len(l)))
+    return np.pad(l, pad_with, mode='constant', constant_values=pad)
+
+
+def encode(sent_1, sent_2, tokenizer, input_seq_len, output_seq_len):
+    """
+    Encode the text to the BERT expected format
+    
+    'input_seq_len' is used to truncate the the article length
+    'output_seq_len' is used to truncate the the summary length
+    BERT has the following special tokens:    
+    
+    [CLS] : The first token of every sequence. A classification token
+    which is normally used in conjunction with a softmax layer for classification
+    tasks. For anything else, it can be safely ignored.
+    [SEP] : A sequence delimiter token which was used at pre-training for
+    sequence-pair tasks (i.e. Next sentence prediction). Must be used when
+    sequence pair tasks are required. When a single sequence is used it is just appended at the end.
+    [MASK] : Token used for masked words. Only used for pre-training.
+    
+    Additionally BERT requires additional inputs to work correctly:
+        - Mask IDs
+        - Segment IDs
+    
+    The mask has 1 for real tokens and 0 for padding tokens. Only real tokens are attended to.
+    Sentence Embeddings is just a numeric class to distinguish between pairs of sentences.
+    """
+    tokens_1 = tokenizer.tokenize(sent_1.numpy())
+    tokens_2 = tokenizer.tokenize(sent_2.numpy())
+    
+    # Account for [CLS] and [SEP] with "- 2"
+    if len(tokens_1) > input_seq_len - 2:
+        tokens_1 = tokens_1[0:(input_seq_len - 2)]
+    if len(tokens_2) > (output_seq_len + 1) - 2:
+        tokens_2 = tokens_2[0:((output_seq_len + 1) - 2)]
+        
+    tokens_1 = ["[CLS]"] + tokens_1 + ["[SEP]"]
+    tokens_2 = ["[CLS]"] + tokens_2 + ["[SEP]"]
+    
+    input_ids_1 = tokenizer.convert_tokens_to_ids(tokens_1)
+    input_ids_2 = tokenizer.convert_tokens_to_ids(tokens_2)
+    
+    input_mask_1 = [1] * len(input_ids_1)
+    input_mask_2 = [1] * len(input_ids_2)
+
+    input_ids_1 = pad(input_ids_1, input_seq_len, 0)
+    input_ids_2 = pad(input_ids_2, output_seq_len + 1, 0)
+    input_mask_1 = pad(input_mask_1, input_seq_len, 0)
+    input_mask_2 = pad(input_mask_2, output_seq_len + 1, 0)
+    
+    input_type_ids_1 = [0] * len(input_ids_1)
+    input_type_ids_2 = [0] * len(input_ids_2)
+    
+    return input_ids_1, input_mask_1, input_type_ids_1, input_ids_2, input_mask_2, input_type_ids_2
+
+
+def tf_encode(tokenizer, input_seq_len, output_seq_len):
+    """
+    Operations inside `.map()` run in graph mode and receive a graph
+    tensor that do not have a `numpy` attribute.
+    The tokenizer expects a string or Unicode symbol to encode it into integers.
+    Hence, you need to run the encoding inside a `tf.py_function`,
+    which receives an eager tensor having a numpy attribute that contains the string value.
+    """    
+    def f(s1, s2):
+        encode_ = partial(encode, tokenizer=tokenizer, input_seq_len=input_seq_len, output_seq_len=output_seq_len)
+        return tf.py_function(encode_, [s1, s2], [tf.int32, tf.int32, tf.int32, tf.int32, tf.int32, tf.int32])
+    
+    return f
 
 # Set threshold for document and  summary length
-def filter_max_length(x, y):
+def filter_max_length(x, x1, x2, y, y1, y2):
     return tf.logical_and(
-                          tf.size(x) <= config.doc_length,
-                          tf.size(y) <= config.summ_length
+                          tf.size(x[0]) <= config.doc_length,
+                          tf.size(y[0]) <= config.summ_length
                          )
 
-def filter_combined_length(x, y):
+def filter_combined_length(x, x1, x2, y, y1, y2):
     return tf.math.less_equal(
-                              (tf.size(x) + tf.size(y)), 
+                              (tf.size(x[0]) + tf.size(y[0])), 
                               config.max_tokens_per_line
                              )
                         
 # this function should be added after padded batch step
-def filter_batch_token_size(x, y):
+def filter_batch_token_size(x, x1, x2, y, y1, y2):
     return tf.math.less_equal(
-                              (tf.size(x) + tf.size(y)), 
+                              (tf.size(x[0]) + tf.size(y[0])), 
                               config.max_tokens_per_line*h_parms.batch_size
                              )
     
-def tf_encode(doc, summary):
-    return tf.py_function(encode, [doc, summary], [tf.int64, tf.int64])
-
 def map_batch_shuffle(dataset, buffer_size, split, 
                       shuffle=True, batch_size=h_parms.batch_size,
                       filter_off=False):
-    tf_dataset = dataset.map(tf_encode, num_parallel_calls=AUTOTUNE)
+    tf_dataset = dataset.map(
+                            tf_encode(
+                                tokenizer, 
+                                config.doc_length, 
+                                config.summ_length
+                                ), num_parallel_calls=tf.data.experimental.AUTOTUNE
+                            )
     if not filter_off:
         tf_dataset = tf_dataset.filter(filter_combined_length)
     tf_dataset = tf_dataset.cache()

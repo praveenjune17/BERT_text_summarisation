@@ -4,7 +4,7 @@ tf.random.set_seed(100)
 import time
 import os
 import numpy as np
-from create_tokenizer import tokenizer_en
+from create_tokenizer import tokenizer
 from transformer import Transformer, create_masks
 from hyper_parameters import h_parms
 from configuration import config
@@ -38,8 +38,8 @@ def restore_chkpt(checkpoint_path):
 
 def beam_search_eval(document, beam_size):
   
-  start = [tokenizer_en.vocab_size] 
-  end = [tokenizer_en.vocab_size+1]
+  start = [tokenizer.vocab_size] 
+  end = [tokenizer.vocab_size+1]
   encoder_input = tf.tile(document, multiples=[beam_size, 1])
   batch, inp_shape = encoder_input.shape
   def decoder_query(output):
@@ -76,11 +76,11 @@ def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
         start_time = time.time()
         # translated_output_temp[0] (batch, beam_size, summ_length+1)
         translated_output_temp = beam_search_eval(document, beam_size)
-        sum_ref = tokenizer_en.decode([j for j in tf.squeeze(summary) if j < tokenizer_en.vocab_size])
-        sum_hyp = tokenizer_en.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer_en.vocab_size])
+        sum_ref = tokenizer.decode([j for j in tf.squeeze(summary) if j < tokenizer.vocab_size])
+        sum_hyp = tokenizer.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer.vocab_size])
         total_summary.append((sum_ref, sum_hyp))
-        print('Original summary: {}'.format(tokenizer_en.decode([j for j in tf.squeeze(summary) if j < tokenizer_en.vocab_size])))
-        print('Predicted summary: {}'.format(tokenizer_en.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer_en.vocab_size])))
+        print('Original summary: {}'.format(tokenizer.decode([j for j in tf.squeeze(summary) if j < tokenizer.vocab_size])))
+        print('Predicted summary: {}'.format(tokenizer.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer.vocab_size])))
       ref_sents = [ref for ref, _ in total_summary]
       hyp_sents = [hyp for _, hyp in total_summary]
       rouges = rouge_all.get_scores(ref_sents , hyp_sents)

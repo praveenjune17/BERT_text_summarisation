@@ -5,7 +5,7 @@ from input_path import file_path
 hyp = {
      'copy_gen':True,
      'create_hist':False,             # create histogram of summary length and # of tokens per batch
-     'doc_length': 1268,
+     'doc_length': 512,
      'd_model': 512,                  # the projected word vector dimension
      'dff': 512,                      # feed forward network hidden parameters
      'early_stop' : True,
@@ -22,7 +22,7 @@ hyp = {
      'print_chks': 50,                # print training progress per number of batches specified
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
-     'summ_length': 91,
+     'summ_length': 72,
      'target_vocab_size': 8263,       # total vocab size + start and end token
      'test_size': 0.05,               # test set split size
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used

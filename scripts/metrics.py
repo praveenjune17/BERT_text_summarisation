@@ -7,7 +7,7 @@ from configuration import config
 from hyper_parameters import h_parms
 from rouge import Rouge
 from input_path import file_path
-from create_tokenizer import tokenizer_en
+from create_tokenizer import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
 #from gradient_accum import AccumOptimizer
@@ -40,7 +40,7 @@ def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
 
 def loss_function(real, pred):
   mask = tf.math.logical_not(tf.math.equal(real, 0))
-  real = label_smoothing(tf.one_hot(real, depth=tokenizer_en.vocab_size+2))
+  real = label_smoothing(tf.one_hot(real, depth=tokenizer.vocab_size+2))
   # pred shape == real shape = (batch_size, tar_seq_len, target_vocab_size)
   loss_ = loss_object(real, pred)
   mask = tf.cast(mask, dtype=loss_.dtype)
@@ -57,8 +57,8 @@ def write_summary(tar_real, predictions, inp, epoch, write=config.write_summary_
   total_summary = []
   for i, sub_tar_real in enumerate(tar_real):
     predicted_id = tf.cast(tf.argmax(predictions[i], axis=-1), tf.int32)
-    sum_ref = tokenizer_en.decode([i for i in sub_tar_real if i < tokenizer_en.vocab_size])
-    sum_hyp = tokenizer_en.decode([i for i in predicted_id if i < tokenizer_en.vocab_size if i > 0])
+    sum_ref = tokenizer.decode([i for i in sub_tar_real if i < tokenizer.vocab_size])
+    sum_hyp = tokenizer.decode([i for i in predicted_id if i < tokenizer.vocab_size if i > 0])
     # don't consider empty values for ROUGE and BERT score calculation
     if sum_hyp and sum_ref:
       total_summary.append((sum_ref, sum_hyp))
