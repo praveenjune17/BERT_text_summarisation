@@ -3,10 +3,10 @@ import tensorflow_hub as hub
 import pandas as pd
 
 from bert_tokenization import FullTokenizer
+from abstractive_summarizer import AbstractiveSummarization
 
 BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
-bert_layer = hub.KerasLayer(BERT_MODEL_URL,
-                            trainable=True)
+bert_layer = AbstractiveSummarization().bert
 vocab_file = bert_layer.resolved_object.vocab_file.asset_path.numpy()
 do_lower_case = bert_layer.resolved_object.do_lower_case.numpy()
 tokenizer = FullTokenizer(vocab_file, do_lower_case)
