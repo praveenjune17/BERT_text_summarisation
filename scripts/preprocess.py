@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
+import numpy as np
 from sklearn.model_selection import train_test_split
 import tensorflow_datasets as tfds
 from functools import partial
@@ -127,7 +128,7 @@ def map_batch_shuffle(dataset, buffer_size, split,
     tf_dataset = tf_dataset.cache()
     if split == 'train' and shuffle and (not config.use_tfds):
        tf_dataset = tf_dataset.shuffle(buffer_size, seed = 100)
-    tf_dataset = tf_dataset.padded_batch(batch_size, padded_shapes=([-1], [-1]))
+    #tf_dataset = tf_dataset.padded_batch(batch_size, padded_shapes=([-1], [-1]))
     tf_dataset = tf_dataset.prefetch(buffer_size=AUTOTUNE)
     return tf_dataset
     
