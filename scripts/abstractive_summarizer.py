@@ -4,6 +4,8 @@ from create_tokenizer import BERT_MODEL_URL
 from transformer import create_masks, Decoder, Pointer_Generator
 from creates import log
 
+BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
+
 # def _embedding_from_bert():
 #     """
 #     Extract the preratined word embeddings from a BERT model
@@ -71,17 +73,6 @@ class AbstractiveSummarization(tf.keras.Model):
         # (batch_size, seq_len, vocab_len)
         logits = self.final_layer(dec_output)
 
-        if config.copy_gen: 
-            logits = self.pointer_generator(
-                                            dec_output, 
-                                            logits, 
-                                            attention_dist, 
-                                            input_ids, 
-                                            tf.shape(input_ids)[1], 
-                                            tf.shape(embeddings)[1], 
-                                            training=training
-                                            )
-
         if config.add_stage_2:
             N = tf.shape(enc_output)[0]
             T = self.output_seq_len
@@ -130,10 +121,19 @@ class AbstractiveSummarization(tf.keras.Model):
             # (batch_size, seq_len - 1, vocab_len)
             logits = self.final_layer(dec_outputs)
 
-            logits = tf.concat(
-                               [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], self.vocab_size), axis=0), [N, 1, 1]), logits],
-                               axis=1
-                               )
+            # logits = tf.concat(
+            #                    [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], self.vocab_size), axis=0), [N, 1, 1]), logits],
+            #                    axis=1
+            #                    )
 
-        
+            if config.copy_gen: 
+                logits = self.pointer_generator(
+                                                dec_output, 
+                                                logits, 
+                                                attention_dist, 
+                                                input_ids, 
+                                                tf.shape(input_ids)[1], 
+                                                tf.shape(embeddings)[1], 
+                                                training=training
+                                                )
         return logits, attention_dist, dec_outputs
