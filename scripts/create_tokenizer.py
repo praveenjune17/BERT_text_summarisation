@@ -4,6 +4,7 @@ import pandas as pd
 from configuration import config
 from hyper_parameters import h_parms
 from bert_tokenization import FullTokenizer
+from bert_model import bert_layer
 from abstractive_summarizer import AbstractiveSummarization
 
 
@@ -34,7 +35,7 @@ refine_summary_model = AbstractiveSummarization(
                                 rate=h_parms.dropout_rate
                                 )
 
-bert_layer = draft_summary_model.bert
+#bert_layer = draft_summary_model.bert
 vocab_file = bert_layer.resolved_object.vocab_file.asset_path.numpy()
 do_lower_case = bert_layer.resolved_object.do_lower_case.numpy()
 tokenizer = FullTokenizer(vocab_file, do_lower_case)

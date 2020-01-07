@@ -4,8 +4,9 @@ from tensorflow.keras.initializers import Constant
 from transformer import create_masks, Decoder, Pointer_Generator
 from creates import log
 from configuration import config
+from bert_model import b_model, bert_layer
 
-BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
+
 
 # def _embedding_from_bert():
 #     """
@@ -32,10 +33,11 @@ class AbstractiveSummarization(tf.keras.Model):
         self.output_seq_len = output_seq_len
         
         self.vocab_size = vocab_size
-    
-        self.bert = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
+
+        #_, enc_output = self.bert((input_ids, input_mask, input_segment_ids))
+        self.bert = b_model.predict
         
-        embedding_matrix = self.bert.get_weights()[0]
+        embedding_matrix = bert_layer.get_weights()[0]
         
         self.embedding = tf.keras.layers.Embedding(
             vocab_size, d_model, trainable=False,
@@ -62,7 +64,15 @@ class AbstractiveSummarization(tf.keras.Model):
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids)
 
         # (batch_size, seq_len, d_bert)
-        enc_output = self.bert((input_ids, input_mask, input_segment_ids))[1] # index 1 returns the sequence output
+        #enc_output = self.bert((input_ids, input_mask, input_segment_ids))[1] # index 1 returns the sequence output
+        # max_seq_length = 128  # Your choice here.
+        # input_word_ids = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
+        #                                        name="input_word_ids")
+        # input_mask = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
+        #                                    name="input_mask")
+        # segment_ids = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
+        #                                     name="segment_ids")
+        _, enc_output = self.bert((input_ids, input_mask, input_segment_ids))
 
         if add_stage_1:        
             # (batch_size, seq_len, d_bert)
