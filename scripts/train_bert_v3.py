@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import tensorflow as tf
 tf.random.set_seed(100)
-tf.config.optimizer.set_jit(True)
+#tf.config.optimizer.set_jit(True)
 import time
 import os
 import shutil
@@ -23,6 +23,11 @@ from local_tf_ops import *
 #policy = mixed_precision.Policy('mixed_float16')
 #mixed_precision.set_policy(policy)
 #optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')
+def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
+    V = inputs.get_shape().as_list()[-1] # number of channels
+    epsilon = tf.cast(epsilon, dtype=inputs.dtype)
+    V = tf.cast(V, dtype=inputs.dtype)
+    return ((1-epsilon) * inputs) + (epsilon / V)
 
 train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()

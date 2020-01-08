@@ -3,8 +3,8 @@ from bunch import Bunch
 import tensorflow as tf
 
 hyp = {
-	 'accumulation_steps': 2,                                                                                   # TODO
-	 'batch_size': 8,
+	 'accumulation_steps': 18,                                                                                   # TODO
+	 'batch_size': 2,
 	 'beam_sizes': [2, 3, 4],        # Used only during inference                                                 #TODO for training
 	 'combined_metric_weights': [0.4, 0.3, 0.3], #(bert_score, rouge, validation accuracy)
 	 'dropout_rate': 0.0,

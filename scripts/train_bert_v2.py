@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-sys.path.insert(0, '/content/BERT_text_summarisation/scripts/')
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tensorflow as tf
