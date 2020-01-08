@@ -31,14 +31,9 @@ class AbstractiveSummarization(tf.keras.Model):
         
         self.input_seq_len = input_seq_len
         self.output_seq_len = output_seq_len
-        
         self.vocab_size = vocab_size
-
-        #_, enc_output = self.bert((input_ids, input_mask, input_segment_ids))
-        self.bert = b_model.predict
-        
-        embedding_matrix = bert_layer.get_weights()[0]
-        
+        self.bert = b_model.predict        
+        embedding_matrix = bert_layer.get_weights()[0]        
         self.embedding = tf.keras.layers.Embedding(
             vocab_size, d_model, trainable=False,
             embeddings_initializer=Constant(embedding_matrix)
@@ -64,25 +59,14 @@ class AbstractiveSummarization(tf.keras.Model):
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids)
 
         # (batch_size, seq_len, d_bert)
-        #enc_output = self.bert((input_ids, input_mask, input_segment_ids))[1] # index 1 returns the sequence output
-        # max_seq_length = 128  # Your choice here.
-        # input_word_ids = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
-        #                                        name="input_word_ids")
-        # input_mask = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
-        #                                    name="input_mask")
-        # segment_ids = tf.keras.layers.Input(shape=(max_seq_length,), dtype=tf.int32,
-        #                                     name="segment_ids")
-        _, enc_output = self.bert((input_ids, input_mask, input_segment_ids))
+        _, enc_output = self.bert([[input_ids],[input_masks],[input_segments]])
 
         if add_stage_1:        
             # (batch_size, seq_len, d_bert)
             embeddings = self.embedding(target_ids) 
 
             # (batch_size, seq_len, d_bert), (_)            
-            dec_output, attention_dist = self.decoder(embeddings, enc_output, training, combined_mask, dec_padding_mask)
-
-            # (batch_size, seq_len, vocab_len)
-            logits = self.final_layer(dec_output)
+            dec_outputs, attention_dist = self.decoder(embeddings, enc_output, training, combined_mask, dec_padding_mask)
 
         if add_stage_2:
             N = tf.shape(enc_output)[0]
@@ -99,9 +83,10 @@ class AbstractiveSummarization(tf.keras.Model):
             # (batch_size x (seq_len - 1), 1, 1, seq_len) 
             padding_mask = tf.tile(dec_padding_mask, [T-1, 1, 1, 1])
             # (batch_size x (seq_len - 1), seq_len, d_bert)
-            context_vectors = self.bert((dec_inp_ids, dec_inp_mask, dec_inp_segment_ids))
+            _, context_vectors = self.bert([[dec_inp_ids],[dec_inp_mask],[dec_inp_segment_ids]])
+
             # (batch_size x (seq_len - 1), seq_len, d_bert), (_)
-            dec_outputs, attention_dists = self.decoder(
+            dec_outputs, attention_dist = self.decoder(
                                                         context_vectors,
                                                         enc_output,
                                                         training,
@@ -129,17 +114,12 @@ class AbstractiveSummarization(tf.keras.Model):
                                )
 
 
-            # (batch_size, seq_len - 1, vocab_len)
-            logits = self.final_layer(dec_outputs)
-
-            # logits = tf.concat(
-            #                    [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], self.vocab_size), axis=0), [N, 1, 1]), logits],
-            #                    axis=1
-            #                    )
+        # (batch_size, seq_len, vocab_len)
+        logits = self.final_layer(dec_outputs)
 
         if config.copy_gen: 
             logits = self.pointer_generator(
-                                            dec_output, 
+                                            dec_outputs, 
                                             logits, 
                                             attention_dist, 
                                             input_ids, 

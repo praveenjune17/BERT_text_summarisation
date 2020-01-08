@@ -28,23 +28,9 @@ train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
-# model = AbstractiveSummarization(
-#                                 num_layers=config.num_layers, 
-#                                 d_model=config.d_model, 
-#                                 num_heads=config.num_heads, 
-#                                 dff=config.dff, 
-#                                 vocab_size=config.input_vocab_size,
-#                                 input_seq_len=config.doc_length, 
-#                                 output_seq_len=config.summ_length, 
-#                                 rate=h_parms.dropout_rate
-#                                 )
-
 
 @tf.function(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
-  #tar_inp = tar[0][:, :-1]
-  #tar_real = tar[0][:, 1:]
-  #enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
   with tf.GradientTape() as tape:
     draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(
                                                                                        inp, 
