@@ -10,7 +10,6 @@ from input_path import file_path
 from create_tokenizer import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
-#from gradient_accum import AccumOptimizer
 
 log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
 _, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
@@ -38,9 +37,9 @@ def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
     V = tf.cast(V, dtype=inputs.dtype)
     return ((1-epsilon) * inputs) + (epsilon / V)
 
-def loss_function(real, pred):
-  mask = tf.math.logical_not(tf.math.equal(real, 0))
-  real = label_smoothing(tf.one_hot(real, depth=tokenizer.vocab_size+2))
+def loss_function(real, pred, mask):
+  #mask = tf.math.logical_not(tf.math.equal(real, 0))
+  #real = label_smoothing(tf.one_hot(real, depth=tokenizer.vocab_size+2))
   # pred shape == real shape = (batch_size, tar_seq_len, target_vocab_size)
   loss_ = loss_object(real, pred)
   mask = tf.cast(mask, dtype=loss_.dtype)
@@ -152,7 +151,6 @@ if h_parms.grad_clipnorm:
                              beta_1=0.9, 
                              beta_2=0.98, 
                              clipnorm=h_parms.grad_clipnorm,
-                             #accum_iters=h_parms.accumulation_steps,
                              epsilon=1e-9
                              )
 else:
@@ -160,7 +158,6 @@ else:
                              learning_rate=lr, 
                              beta_1=0.9, 
                              beta_2=0.98, 
-                             #accum_iters=h_parms.accumulation_steps,
                              epsilon=1e-9
                              )
 

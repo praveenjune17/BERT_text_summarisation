@@ -5,11 +5,11 @@ from configuration import config
 from hyper_parameters import h_parms
 from bert_tokenization import FullTokenizer
 from bert_model import vocab_of_BERT
-from abstractive_summarizer import AbstractiveSummarization
+from abstractive_summarizer_v2 import AbstractiveSummarization
 
 
 
-draft_summary_model = AbstractiveSummarization(
+model = AbstractiveSummarization(
                                 num_layers=config.num_layers, 
                                 d_model=config.d_model, 
                                 num_heads=config.num_heads, 
@@ -17,21 +17,6 @@ draft_summary_model = AbstractiveSummarization(
                                 vocab_size=config.input_vocab_size,
                                 input_seq_len=config.doc_length, 
                                 output_seq_len=config.summ_length, 
-                                add_stage_1=True,
-                                add_stage_2=False,
-                                rate=h_parms.dropout_rate
-                                )
-
-refine_summary_model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                vocab_size=config.input_vocab_size,
-                                input_seq_len=config.doc_length, 
-                                output_seq_len=config.summ_length, 
-                                add_stage_1=False,
-                                add_stage_2=True,
                                 rate=h_parms.dropout_rate
                                 )
 

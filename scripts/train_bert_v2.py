@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import sys
+sys.path.insert(0, '/content/BERT_text_summarisation/scripts/')
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tensorflow as tf
@@ -23,6 +25,11 @@ from local_tf_ops import *
 #policy = mixed_precision.Policy('mixed_float16')
 #mixed_precision.set_policy(policy)
 #optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')
+def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
+    V = inputs.get_shape().as_list()[-1] # number of channels
+    epsilon = tf.cast(epsilon, dtype=inputs.dtype)
+    V = tf.cast(V, dtype=inputs.dtype)
+    return ((1-epsilon) * inputs) + (epsilon / V)
 
 train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()
@@ -31,24 +38,27 @@ accumulators = []
 
 #@tf.function(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
+  target_ids_, target_mask, target_segment_ids = tar
+  mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
   with tf.GradientTape() as tape:
     draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(
                                                                                        inp, 
                                                                                        tar, 
                                                                                        training=True
                                                                                        )
-    refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
-                                                                                       inp, 
-                                                                                       tar, 
-                                                                                       training=True
-                                                                                       )
-    train_variables = draft_summary_model.trainable_variables + refine_summary_model.trainable_variables
-    draft_summary_loss = loss_function(tar[0][:, 1:, :], draft_predictions)
-    refine_summary_loss = loss_function(tar[0][:, :-1, :], refine_predictions)
-    loss = draft_summary_loss + refine_summary_loss
-    scaled_loss = optimizer.get_scaled_loss(loss)
-  scaled_gradients  = tape.gradient(scaled_loss, train_variables)
-  gradients = optimizer.get_unscaled_gradients(scaled_gradients)
+    # refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
+    #                                                                                    inp, 
+    #                                                                                    tar, 
+    #                                                                                    training=True
+    #                                                                                    )
+    train_variables = draft_summary_model.trainable_variables #+ refine_summary_model.trainable_variables
+    draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
+    #refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions)
+    loss = draft_summary_loss #+ refine_summary_loss
+    #scaled_loss = optimizer.get_scaled_loss(loss)
+  gradients  = tape.gradient(loss, train_variables)
+  #gradients = optimizer.get_unscaled_gradients(scaled_gradients)
   # Initialize the shadow variables with same type as the gradients 
   if not accumulators:
     for tv in gradients:
@@ -64,31 +74,34 @@ def train_step(inp, tar, grad_accum_flag):
     for accumulator in (accumulators):
         accumulator.assign(tf.zeros_like(accumulator))
   train_loss(loss)
-  train_accuracy(tar[0][:, 1:, :], draft_predictions)
-  train_accuracy(tar[0][:, :-1, :], refine_predictions)  
+  train_accuracy(target_ids_[:, 1:], draft_predictions)
+  #train_accuracy(target_ids_[:, :-1], refine_predictions)  
   
 @tf.function(input_signature=val_step_signature)
 def val_step(inp, tar, epoch, create_summ):
-
+  target_ids_, target_mask, target_segment_ids = tar
+  mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+  #target_ids = tf.one_hot(target_ids, config.input_vocab_size)
+  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
   draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(
                                                                                      inp, 
                                                                                      tar, 
                                                                                      training=False
                                                                                      )
-  refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
-                                                                                         inp, 
-                                                                                         tar, 
-                                                                                         training=False
-                                                                                         )
-  draft_summary_loss = loss_function(tar[0][:, 1:, :], draft_predictions)
-  refine_summary_loss = loss_function(tar[0][:, :-1, :], refine_predictions)
-  loss = draft_summary_loss + refine_summary_loss
+  # refine_predictions, refine_attention_weights, refine_dec_output = refine_summary_model(
+  #                                                                                        inp, 
+  #                                                                                        tar, 
+  #                                                                                        training=False
+  #                                                                                        )
+  draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
+  #refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions)
+  loss = draft_summary_loss #+ refine_summary_loss
   validation_loss(loss)
-  validation_accuracy(tar_real, predictions)
-  if create_summ: 
-    rouge, bert = tf_write_summary(tar_real, predictions, inp[:, 1:], epoch)  
-  else: 
-    rouge, bert = (1.0, 1.0)  
+  validation_accuracy(target_ids_[:, 1:], draft_predictions)
+  # if create_summ: 
+  #   rouge, bert = tf_write_summary(tar_real, draft_predictions, inp[0][:, 1:], epoch)  
+  # else: 
+  #   rouge, bert = (1.0, 1.0)  
   return (rouge, bert)
   
 def check_ckpt(checkpoint_path):
@@ -120,6 +133,7 @@ for epoch in range(h_parms.epochs):
   # not able to do this inside tf.function since it doesn't allow this operation
     inp = input_ids, input_mask, input_segment_ids
     tar = target_ids, target_mask, target_segment_ids
+    #break
     grad_accum_flag = True if (batch+1)%h_parms.accumulation_steps == 0 else False
     train_step(inp, tar, grad_accum_flag)
     batch_run_check(
@@ -129,7 +143,7 @@ for epoch in range(h_parms.epochs):
                     train_summary_writer, 
                     train_loss.result(), 
                     train_accuracy.result(), 
-                    model
+                    draft_summary_model
                     )
   #count_recs(batch, epoch, num_of_train_examples)
   (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(

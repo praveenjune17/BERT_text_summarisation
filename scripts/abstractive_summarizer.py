@@ -4,7 +4,7 @@ from tensorflow.keras.initializers import Constant
 from transformer import create_masks, Decoder, Pointer_Generator
 from creates import log
 from configuration import config
-from bert_model import Bert_layer
+from bert_model import BertLayer, vocab_of_BERT
 
 # Special Tokens
 UNK_ID = 100
@@ -68,7 +68,7 @@ class AbstractiveSummarization(tf.keras.Model):
         self.output_seq_len = output_seq_len
         self.vocab_size = vocab_size
         self.bert = BertLayer(d_embedding=d_model, trainable=False)       
-        embedding_matrix = bert_layer.get_weights()[0]        
+        embedding_matrix = vocab_of_BERT.get_weights()[0]        
         self.embedding = tf.keras.layers.Embedding(
             vocab_size, d_model, trainable=False,
             embeddings_initializer=Constant(embedding_matrix)
@@ -94,7 +94,7 @@ class AbstractiveSummarization(tf.keras.Model):
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
 
         # (batch_size, seq_len, d_bert)
-        _, enc_output = self.bert((input_ids, input_mask, input_segment_ids))
+        enc_output = self.bert((input_ids, input_mask, input_segment_ids))
 
         if self.add_stage_1:        
             # (batch_size, seq_len, d_bert)
@@ -131,7 +131,7 @@ class AbstractiveSummarization(tf.keras.Model):
             # (batch_size x (seq_len - 1), 1, 1, seq_len) 
             padding_mask = tf.tile(dec_padding_mask, [T-1, 1, 1, 1])
             # (batch_size x (seq_len - 1), seq_len, d_bert)
-            _, context_vectors = self.bert((dec_inp_ids, dec_inp_mask, dec_inp_segment_ids))
+            context_vectors = self.bert((dec_inp_ids, dec_inp_mask, dec_inp_segment_ids))
 
             # (batch_size x (seq_len - 1), seq_len, d_bert), (_)
             dec_outputs, attention_dist = self.decoder(
