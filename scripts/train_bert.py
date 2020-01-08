@@ -29,7 +29,7 @@ train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
 
-@tf.function(input_signature=train_step_signature)
+#@tf.function(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
   with tf.GradientTape() as tape:
     draft_predictions, draft_attention_weights, draft_dec_output = draft_summary_model(

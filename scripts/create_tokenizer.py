@@ -4,7 +4,7 @@ import pandas as pd
 from configuration import config
 from hyper_parameters import h_parms
 from bert_tokenization import FullTokenizer
-from bert_model import bert_layer
+from bert_model import vocab_of_BERT
 from abstractive_summarizer import AbstractiveSummarization
 
 
@@ -36,9 +36,10 @@ refine_summary_model = AbstractiveSummarization(
                                 )
 
 #bert_layer = draft_summary_model.bert
-vocab_file = bert_layer.resolved_object.vocab_file.asset_path.numpy()
-do_lower_case = bert_layer.resolved_object.do_lower_case.numpy()
+vocab_file = vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
+do_lower_case = vocab_of_BERT.resolved_object.do_lower_case.numpy()
 tokenizer = FullTokenizer(vocab_file, do_lower_case)
+del vocab_of_BERT
 
 def create_dataframe(path, num_examples):
     df = pd.read_csv(path)
