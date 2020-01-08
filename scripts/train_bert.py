@@ -93,7 +93,8 @@ def val_step(inp, tar, epoch, create_summ):
   
 def check_ckpt(checkpoint_path):
     ckpt = tf.train.Checkpoint(
-                               model=model,
+                               draft_summary_model=draft_summary_model,
+                               refine_summary_model=refine_summary_model,
                                optimizer=optimizer
                               )
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, keep_checkpoint_every_n_hours=0.3, max_to_keep=20)

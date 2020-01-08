@@ -68,6 +68,17 @@ class AbstractiveSummarization(tf.keras.Model):
             # (batch_size, seq_len, d_bert), (_)            
             dec_outputs, attention_dist = self.decoder(embeddings, enc_output, training, combined_mask, dec_padding_mask)
 
+            if config.copy_gen: 
+                logits = self.pointer_generator(
+                                                dec_outputs, 
+                                                logits, 
+                                                attention_dist, 
+                                                input_ids, 
+                                                tf.shape(input_ids)[1], 
+                                                tf.shape(target_ids)[1], 
+                                                training=training
+                                                )
+
         if add_stage_2:
             N = tf.shape(enc_output)[0]
             T = self.output_seq_len
@@ -116,15 +127,4 @@ class AbstractiveSummarization(tf.keras.Model):
 
         # (batch_size, seq_len, vocab_len)
         logits = self.final_layer(dec_outputs)
-
-        if config.copy_gen: 
-            logits = self.pointer_generator(
-                                            dec_outputs, 
-                                            logits, 
-                                            attention_dist, 
-                                            input_ids, 
-                                            tf.shape(input_ids)[1], 
-                                            tf.shape(target_ids)[1], 
-                                            training=training
-                                            )
         return logits, attention_dist, dec_outputs
