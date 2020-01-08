@@ -7,7 +7,7 @@ from configuration import config
 from hyper_parameters import h_parms
 from rouge import Rouge
 from input_path import file_path
-from create_tokenizer import tokenizer
+from create_tokenizer_v2 import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
 

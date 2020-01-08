@@ -4,7 +4,7 @@ from tensorflow.keras.initializers import Constant
 from transformer import create_masks, Decoder, Pointer_Generator
 from creates import log
 from configuration import config
-from bert_model import BertLayer, vocab_of_BERT
+from bert_model import BertLayer
 
 # Special Tokens
 UNK_ID = 100
@@ -55,7 +55,7 @@ def tile_and_mask_diagonal(x, mask_with):
     embedding_matrix = vocab_of_BERT.get_weights()[0]   
                        
     log.info(f"Embedding matrix shape '{embedding_matrix.shape}'")
-    return (embedding_matrix,vocab_of_BERT)
+    return (embedding_matrix, vocab_of_BERT)
 
 class AbstractiveSummarization(tf.keras.Model):
     """
