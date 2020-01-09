@@ -3,7 +3,6 @@ from bunch import Bunch
 from input_path import file_path
 
 hyp = {
-     'add_stage_2':True,
      'copy_gen':True,
      'create_hist':False,             # create histogram of summary length and # of tokens per batch
      'doc_length': 512,
