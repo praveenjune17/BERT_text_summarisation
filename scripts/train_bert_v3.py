@@ -5,19 +5,14 @@ import tensorflow as tf
 tf.random.set_seed(100)
 #tf.config.optimizer.set_jit(True)
 import time
-import os
-import shutil
-import tensorflow_datasets as tfds
 #from tensorflow.keras.mixed_precision import experimental as mixed_precision
 from preprocess import create_train_data
-from transformer import Transformer, create_masks
 from hyper_parameters import h_parms
 from configuration import config
 from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer_v2 import tokenizer, model
-from abstractive_summarizer_v3 import AbstractiveSummarization
+from create_tokenizer_v2 import tokenizer
 from local_tf_ops import *
 
 #policy = mixed_precision.Policy('mixed_float16')
@@ -30,6 +25,15 @@ from local_tf_ops import *
 # config_tf = tf.ConfigProto(allow_soft_placement=True)
 # config_tf.gpu_options.allow_growth=True
 # run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
+model = AbstractiveSummarization(
+                                num_layers=config.num_layers, 
+                                d_model=config.d_model, 
+                                num_heads=config.num_heads, 
+                                dff=config.dff, 
+                                vocab_size=config.input_vocab_size,
+                                output_seq_len=config.summ_length, 
+                                rate=h_parms.dropout_rate
+                                )
 
 def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
     V = inputs.get_shape().as_list()[-1] # number of channels

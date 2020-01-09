@@ -51,7 +51,7 @@ def _embedding_from_bert():
   log.info(f"Embedding matrix shape '{embedding_matrix.shape}'")
   return (embedding_matrix, vocab_of_BERT)
 
-class draft_summary(tf.keras.layers.layer):
+class draft_summary(tf.keras.layers.Layer):
 
     def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, rate=0.1):
         super(draft_summary, self).__init__()
@@ -59,7 +59,7 @@ class draft_summary(tf.keras.layers.layer):
         self.final_layer = tf.keras.layers.Dense(vocab_size)
 
     def call(self,
-              embeddings
+              embeddings,
               enc_output,
               look_ahead_mask,
               padding_mask,
@@ -78,7 +78,7 @@ class draft_summary(tf.keras.layers.layer):
         draft_logits = self.final_layer(draft_dec_outputs)
         return draft_logits, draft_attention_dist, draft_dec_outputs
 
-class refine_summary(tf.keras.layers.layer):
+class refine_summary(tf.keras.layers.Layer):
 
     def __init__(self, num_layers, d_model, num_heads, dff, vocab_size, output_seq_len, rate=0.1):
         super(refine_summary, self).__init__()
@@ -86,6 +86,7 @@ class refine_summary(tf.keras.layers.layer):
         self.decoder = Decoder(num_layers, d_model, num_heads, dff, vocab_size, rate)
         self.final_layer = tf.keras.layers.Dense(vocab_size)
         self.output_seq_len = output_seq_len
+        self.d_model = d_model
 
     def call(self, 
              enc_output, 
@@ -194,17 +195,17 @@ class AbstractiveSummarization(tf.keras.Model):
         enc_output = self.bert((input_ids, input_mask, input_segment_ids))
 
         # (batch_size, seq_len, d_bert)
-        embeddings = self.embedding(target_ids) 
+        embeddings = self.embedding(target_ids[:, :-1]) 
 
         draft_logits,\
         draft_attention_dist,\
         draft_dec_outputs = self.draft_summary(
-                                                embeddings=embeddings,
-                                                enc_output=enc_output,
-                                                look_ahead_mask=combined_mask,
-                                                padding_mask=dec_padding_mask,
-                                                target_ids=target_ids[:, :-1],
-                                                training=training
+                                                embeddings,
+                                                enc_output,
+                                                combined_mask,
+                                                dec_padding_mask,
+                                                target_ids[:, :-1],
+                                                training
                                               )
 
         if config.copy_gen: 
@@ -215,20 +216,18 @@ class AbstractiveSummarization(tf.keras.Model):
                                                 input_ids, 
                                                 tf.shape(input_ids)[1], 
                                                 tf.shape(target_ids[:, :-1])[1], 
-                                                training=training
+                                                training
                                                 )
 
 
         refine_logits,\
         refine_attention_dist,\
         refine_dec_outputs = self.refine_summary(
-                                                  enc_output=enc_output,
-                                                  target=(
-                                                          target_ids[:, :-1], target_mask[:, :-1], 
-                                                          target_segment_ids[:, :-1]
-                                                          ),            
-                                                  padding_mask=dec_padding_mask,
-                                                  training=training
+                                                  enc_output,
+                                                  (target_ids[:, :-1], target_mask[:, :-1], 
+                                                   target_segment_ids[:, :-1]),            
+                                                  dec_padding_mask,
+                                                  training
                                                  )
                                                 
               

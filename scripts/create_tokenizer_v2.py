@@ -1,22 +1,9 @@
-import tensorflow as tf
-import tensorflow_hub as hub
 import pandas as pd
-from configuration import config
-from hyper_parameters import h_parms
 from bert_tokenization import FullTokenizer
-from abstractive_summarizer_v3 import AbstractiveSummarization
+from train_bert_v3 import model
 
 
 
-model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                vocab_size=config.input_vocab_size,
-                                output_seq_len=config.summ_length, 
-                                rate=h_parms.dropout_rate
-                                )
 
 
 vocab_file = model.vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
