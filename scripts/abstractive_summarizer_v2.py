@@ -44,10 +44,12 @@ def tile_and_mask_diagonal(x, mask_with):
     return masked
 
 def _embedding_from_bert():
+
   log.info("Extracting pretrained word embeddings weights from BERT")
   BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
-  vocab_of_BERT = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
-  embedding_matrix = vocab_of_BERT.get_weights()[0]   
+  with tf.device("/device:CPU:0"):
+      vocab_of_BERT = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
+      embedding_matrix = vocab_of_BERT.get_weights()[0]   
   log.info(f"Embedding matrix shape '{embedding_matrix.shape}'")
   return (embedding_matrix, vocab_of_BERT)
 
@@ -74,6 +76,10 @@ class AbstractiveSummarization(tf.keras.Model):
             self.pointer_generator   = Pointer_Generator()
                 
         self.final_layer = tf.keras.layers.Dense(vocab_size)
+
+    def encode(self, ids, mask, segment_ids):
+        # (batch_size, seq_len, d_bert)
+        return self.bert((ids, mask, segment_ids))
 
     def draft_summary(self,
                       enc_output,
@@ -163,7 +169,7 @@ class AbstractiveSummarization(tf.keras.Model):
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
 
         # (batch_size, seq_len, d_bert)
-        enc_output = self.bert((input_ids, input_mask, input_segment_ids))
+        enc_output = self.encode((input_ids, input_mask, input_segment_ids))
 
         
         draft_logits, draft_attention_dist, draft_dec_outputs = self.draft_summary(
