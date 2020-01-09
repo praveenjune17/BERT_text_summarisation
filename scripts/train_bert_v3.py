@@ -17,7 +17,7 @@ from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_su
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
 from create_tokenizer_v2 import tokenizer, model
-from abstractive_summarizer_v2 import AbstractiveSummarization
+from abstractive_summarizer_v3 import AbstractiveSummarization
 from local_tf_ops import *
 
 #policy = mixed_precision.Policy('mixed_float16')
