@@ -2,9 +2,13 @@
 from bunch import Bunch
 import tensorflow as tf
 
+gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+for device in gpu_devices:
+    tf.config.experimental.set_memory_growth(device, True)
+
 hyp = {
-	 'accumulation_steps': 18,                                                                                   # TODO
-	 'batch_size': 2,
+	 'accumulation_steps': 32,                                                                                   # TODO
+	 'batch_size': 1,
 	 'beam_sizes': [2, 3, 4],        # Used only during inference                                                 #TODO for training
 	 'combined_metric_weights': [0.4, 0.3, 0.3], #(bert_score, rouge, validation accuracy)
 	 'dropout_rate': 0.0,

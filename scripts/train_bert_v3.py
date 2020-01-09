@@ -24,9 +24,12 @@ from local_tf_ops import *
 #mixed_precision.set_policy(policy)
 #optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')
 # config_tf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
-config_tf = tf.ConfigProto(allow_soft_placement=True)
-config_tf.gpu_options.allow_growth=True
-run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
+# gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+# for device in gpu_devices:
+#     tf.config.experimental.set_memory_growth(device, True)
+# config_tf = tf.ConfigProto(allow_soft_placement=True)
+# config_tf.gpu_options.allow_growth=True
+# run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 
 def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
     V = inputs.get_shape().as_list()[-1] # number of channels
