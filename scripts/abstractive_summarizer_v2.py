@@ -169,7 +169,7 @@ class AbstractiveSummarization(tf.keras.Model):
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
 
         # (batch_size, seq_len, d_bert)
-        enc_output = self.encode((input_ids, input_mask, input_segment_ids))
+        enc_output = self.encode(input_ids, input_mask, input_segment_ids)
 
         
         draft_logits, draft_attention_dist, draft_dec_outputs = self.draft_summary(
