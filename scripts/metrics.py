@@ -11,9 +11,9 @@ from create_tokenizer_v2 import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
 
-log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
-_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
-rouge_all = Rouge()
+#log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
+#_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
+#rouge_all = Rouge()
 
 
 

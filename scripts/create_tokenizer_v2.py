@@ -4,7 +4,7 @@ import pandas as pd
 from configuration import config
 from hyper_parameters import h_parms
 from bert_tokenization import FullTokenizer
-from abstractive_summarizer_v2 import AbstractiveSummarization, _embedding_from_bert
+from abstractive_summarizer_v2 import AbstractiveSummarization#, _embedding_from_bert
 
 
 
@@ -20,9 +20,9 @@ model = AbstractiveSummarization(
                                 )
 
 
-_, vocab_of_BERT  = _embedding_from_bert()
-vocab_file = vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
-do_lower_case = vocab_of_BERT.resolved_object.do_lower_case.numpy()
+#_, vocab_of_BERT  = _embedding_from_bert()
+vocab_file = model.vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
+do_lower_case = model.vocab_of_BERT.resolved_object.do_lower_case.numpy()
 tokenizer = FullTokenizer(vocab_file, do_lower_case)
 
 

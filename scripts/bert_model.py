@@ -33,10 +33,14 @@ class BertLayer(tf.keras.layers.Layer):
         
         # Select how many layers to fine tune
         #trainable_vars = trainable_vars[-self.n_fine_tune_layers :]
-        
+        trainable_vars = []
         # Add to trainable weights
         for var in trainable_vars:
             self._trainable_weights.append(var)
+
+        for var in self.bert.variables:
+            if var not in self._trainable_weights:
+                self._non_trainable_weights.append(var)
         
         # Removed when loading from checkpoint
         # Add non-trainable weights
