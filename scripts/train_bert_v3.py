@@ -12,8 +12,8 @@ from configuration import config
 from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer_v2 import tokenizer
-from abstractive_summarizer_v3 import AbstractiveSummarization
+from create_tokenizer_v2 import tokenizer, model
+#from abstractive_summarizer_v3 import AbstractiveSummarization
 from local_tf_ops import *
 
 #policy = mixed_precision.Policy('mixed_float16')
@@ -26,18 +26,6 @@ from local_tf_ops import *
 # config_tf = tf.ConfigProto(allow_soft_placement=True)
 # config_tf.gpu_options.allow_growth=True
 # run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
-model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                vocab_size=config.input_vocab_size,
-                                output_seq_len=config.summ_length, 
-                                rate=h_parms.dropout_rate
-                                )
-# vocab_file = model.vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
-# do_lower_case = model.vocab_of_BERT.resolved_object.do_lower_case.numpy()
-# tokenizer = FullTokenizer(vocab_file, do_lower_case)
 
 def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
     V = inputs.get_shape().as_list()[-1] # number of channels
