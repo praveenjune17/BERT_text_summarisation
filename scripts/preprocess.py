@@ -7,7 +7,7 @@ from functools import partial
 from hyper_parameters import h_parms
 from configuration import config
 from input_path import file_path
-from create_tokenizer_v2 import tokenizer, create_dataframe
+from create_tokenizer import tokenizer, create_dataframe
 from creates import log
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
