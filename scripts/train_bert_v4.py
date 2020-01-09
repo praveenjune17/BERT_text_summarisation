@@ -40,21 +40,17 @@ accumulators = []
 
 #@tf.function(input_signature=train_step_signature)
 def train_step(input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids, grad_accum_flag):
+  inp=input_ids, input_mask, input_segment_ids
+  tar=target_ids, target_mask, target_segment_ids
   target_ids_ = target_ids
   mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
   target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
   with tf.GradientTape() as tape:
-    draft_predictions, draft_attention_weights,\
-    draft_dec_output, refine_predictions,\
-    refine_attention_weights, refine_dec_output = model(
-                                                       input_ids, 
-                                                       input_mask,
-                                                       input_segment_ids, 
-                                                       target_ids, 
-                                                       target_mask, 
-                                                       target_segment_ids,
-                                                       training=True
-                                                       )
+    draft_predictions, draft_attention_weights, draft_dec_output, refine_predictions, refine_attention_weights, refine_dec_output = model(
+                                                                                                                                         inp,
+                                                                                                                                         tar,
+                                                                                                                                         True
+                                                                                                                                         )
     train_variables = model.trainable_variables
     draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
     refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)

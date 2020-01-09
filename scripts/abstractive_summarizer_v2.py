@@ -152,12 +152,12 @@ class AbstractiveSummarization(tf.keras.Model):
         refine_logits = self.final_layer(refine_dec_outputs)
         return refine_logits, refine_attention_dist, refine_dec_outputs
 
-    def call(self, input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids, training):
+    def call(self, inp, tar, training):
         # (batch_size, seq_len) x3
-        #input_ids, input_mask, input_segment_ids = inp
+        input_ids, input_mask, input_segment_ids = inp
         
         # (batch_size, seq_len + 1) x3
-        #target_ids, target_mask, target_segment_ids = tar
+        target_ids, target_mask, target_segment_ids = tar
 
         # (batch_size, 1, 1, seq_len), (_), (batch_size, 1, 1, seq_len)
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
