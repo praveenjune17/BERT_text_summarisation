@@ -60,7 +60,11 @@ def _embedding_from_bert():
                                     name="input_mask")
   esegment_ids = tf.keras.layers.Input(shape=(config.doc_length,), dtype=tf.int32,
                                       name="segment_ids")
+<<<<<<< HEAD
   #bert_layer = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
+=======
+  bert_layer = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
+>>>>>>> d4b0debc4b8a8cbae23f29747dba1e38806fa637
   with tf.device("/device:CPU:0"):
       vocab_of_BERT = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
       embedding_matrix = vocab_of_BERT.get_weights()[0] 
