@@ -5,8 +5,14 @@ from configuration import config
 from creates import log
 
 train_step_signature = [
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
                       tf.TensorSpec(shape=(None), dtype=tf.bool)
                       ]
 
@@ -36,7 +42,7 @@ def batch_run_check(batch, epoch, start, train_summary_writer, train_loss, train
       tf.summary.scalar('train_loss', train_loss, step=batch)
       tf.summary.scalar('train_accuracy', train_accuracy, step=batch)
   if batch==0 and epoch ==0:
-    #log.info(model.summary())
+    log.info(model.summary())
     log.info(batch_zero.format(time.time()-start))
   if batch % config.print_chks == 0:
     log.info(

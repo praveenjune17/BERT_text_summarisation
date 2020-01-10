@@ -1,6 +1,8 @@
-
 import pandas as pd
-from bert_tokenization import FullTokenizer
+#from bert_tokenization import FullTokenizer
+#from abstractive_summarizer import AbstractiveSummarization
+#from hyper_parameters import h_parms
+from transformers import BertTokenizer
 from abstractive_summarizer import AbstractiveSummarization
 from hyper_parameters import h_parms
 from configuration import config
@@ -16,9 +18,7 @@ model = AbstractiveSummarization(
                                 rate=h_parms.dropout_rate
                                 )
 
-vocab_file = model.vocab_of_BERT.resolved_object.vocab_file.asset_path.numpy()
-do_lower_case = model.vocab_of_BERT.resolved_object.do_lower_case.numpy()
-tokenizer = FullTokenizer(vocab_file, do_lower_case)
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 def create_dataframe(path, num_examples):
     df = pd.read_csv(path)

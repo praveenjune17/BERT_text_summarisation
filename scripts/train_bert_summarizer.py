@@ -37,17 +37,13 @@ train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
-
-#@tf.function#(input_signature=train_step_signature)
-def train_step(inp, tar, grad_accum_flag):
-  target_ids_, target_mask, target_segment_ids = tar
-  mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
-  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
+@tf.function(input_signature=train_step_signature)
+def train_step(input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids, target_ids, mask, grad_accum_flag):
   with tf.GradientTape() as tape:
     draft_predictions, draft_attention_weights, draft_dec_output, refine_predictions, refine_attention_weights, refine_dec_output = model(
-                                                                                                                                         inp, 
-                                                                                                                                         tar, 
-                                                                                                                                         training=True
+                                                                                                                                         input_ids, input_mask, input_segment_ids, 
+                                                                                                                                         target_ids_, target_mask, target_segment_ids, 
+                                                                                                                                         True
                                                                                                                                          )
     train_variables = model.trainable_variables
     draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
@@ -82,7 +78,7 @@ def val_step(inp, tar, epoch, create_summ):
   draft_predictions, draft_attention_weights, draft_dec_output, refine_predictions, refine_attention_weights, refine_dec_output = model(
                                                                                                                                        inp, 
                                                                                                                                        tar, 
-                                                                                                                                       training=False
+                                                                                                                                       False
                                                                                                                                        )
   draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
   refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)
@@ -119,13 +115,15 @@ for epoch in range(h_parms.epochs):
   train_accuracy.reset_states()
   validation_loss.reset_states()
   validation_accuracy.reset_states()
-  for (batch, (input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids)) in enumerate(train_dataset):
+  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(train_dataset):
   # the target is shifted right during training hence its shape is subtracted by 1
   # not able to do this inside tf.function since it doesn't allow this operation
     inp = input_ids, input_mask, input_segment_ids
-    tar = target_ids, target_mask, target_segment_ids
+    tar = target_ids_, target_mask, target_segment_ids
+    mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+    target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
     grad_accum_flag = True if (batch+1)%h_parms.accumulation_steps == 0 else False
-    train_step(inp, tar, grad_accum_flag)
+    train_step(input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids, target_ids, mask, grad_accum_flag)
     batch_run_check(
                     batch, 
                     epoch, 

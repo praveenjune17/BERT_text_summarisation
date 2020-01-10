@@ -50,20 +50,20 @@ def encode(sent_1, sent_2, tokenizer, input_seq_len, output_seq_len):
     The mask has 1 for real tokens and 0 for padding tokens. Only real tokens are attended to.
     Sentence Embeddings is just a numeric class to distinguish between pairs of sentences.
     """
-    tokens_1 = tokenizer.tokenize(sent_1.numpy())
-    tokens_2 = tokenizer.tokenize(sent_2.numpy())
+    input_ids_1 = tokenizer.encode(sent_1.numpy().decode('utf-8'))
+    input_ids_2 = tokenizer.encode(sent_2.numpy().decode('utf-8'))
     
     # Account for [CLS] and [SEP] with "- 2"
-    if len(tokens_1) > input_seq_len - 2:
-        tokens_1 = tokens_1[0:(input_seq_len - 2)]
-    if len(tokens_2) > (output_seq_len + 1) - 2:
-        tokens_2 = tokens_2[0:((output_seq_len + 1) - 2)]
+    if len(input_ids_1) > input_seq_len - 2:
+        input_ids_1 = input_ids_1[0:(input_seq_len - 2)]
+    if len(input_ids_2) > (output_seq_len + 1) - 2:
+        input_ids_2 = input_ids_2[0:((output_seq_len + 1) - 2)]
         
-    tokens_1 = ["[CLS]"] + tokens_1 + ["[SEP]"]
-    tokens_2 = ["[CLS]"] + tokens_2 + ["[SEP]"]
+    # tokens_1 = ["[CLS]"] + tokens_1 + ["[SEP]"]
+    # tokens_2 = ["[CLS]"] + tokens_2 + ["[SEP]"]
     
-    input_ids_1 = tokenizer.convert_tokens_to_ids(tokens_1)
-    input_ids_2 = tokenizer.convert_tokens_to_ids(tokens_2)
+    #input_ids_1 = tokenizer.convert_tokens_to_ids(tokens_1)
+    #input_ids_2 = tokenizer.convert_tokens_to_ids(tokens_2)
     
     input_mask_1 = [1] * len(input_ids_1)
     input_mask_2 = [1] * len(input_ids_2)
@@ -124,7 +124,7 @@ def map_batch_shuffle(dataset, buffer_size, split,
                                 ), num_parallel_calls=tf.data.experimental.AUTOTUNE
                             )
     if not filter_off:
-        tf_dataset = tf_dataset.filter(filter_combined_length)
+        tf_dataset = tf_dataset.filter(filter_max_length)
     tf_dataset = tf_dataset.cache()
     if split == 'train' and shuffle and (not config.use_tfds):
        tf_dataset = tf_dataset.shuffle(buffer_size, seed = 100)

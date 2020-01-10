@@ -14,7 +14,6 @@ from hyper_parameters import h_parms
 from create_tokenizer import tokenizer
 from configuration import config
 from preprocess import tf_encode
-from metrics import convert_wordpiece_to_words
   
 def create_temp_file( text):
     temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -113,17 +112,7 @@ if __name__== '__main__':
   if config.show_detokenized_samples:
     inp, tar = next(iter(examples['train']))
     for ip,ta in zip(inp.numpy(), tar.numpy()):
-      # remove CLS, PAD and SEP tokens from the printed lines since they occupy most of the space.
-      doc = tokenizer_en.convert_ids_to_tokens([i for i in ip if i not in [0, 101, 102]])
-      summ = tokenizer_ta.convert_ids_to_tokens([i for i in ta if i not in [0, 101, 102]])
-      print(convert_wordpiece_to_words(doc), convert_wordpiece_to_words(summ))
+      print(tokenizer.decode([i for i in ta if i < tokenizer.vocab_size]))
+      print(tokenizer.decode([i for i in ip if i < tokenizer.vocab_size]))
       break
-    # for ip,ta in zip(inp.numpy(), tar.numpy()):
-    #   print(tokenizer.decode([i for i in ta if i < tokenizer.vocab_size]))
-    #   print(tokenizer.decode([i for i in ip if i < tokenizer.vocab_size]))
-    #   break
-    # Word piece embeddings of english and tamil sub-words
-
-
-  
     
