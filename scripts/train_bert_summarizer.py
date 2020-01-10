@@ -38,7 +38,7 @@ train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
 
-#@tf.function(input_signature=train_step_signature)
+#@tf.function#(input_signature=train_step_signature)
 def train_step(inp, tar, grad_accum_flag):
   target_ids_, target_mask, target_segment_ids = tar
   mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
@@ -74,7 +74,7 @@ def train_step(inp, tar, grad_accum_flag):
   train_accuracy(target_ids_[:, 1:], draft_predictions)
   train_accuracy(target_ids_[:, :-1], refine_predictions)  
   
-@tf.function(input_signature=val_step_signature)
+#@tf.function(input_signature=val_step_signature)
 def val_step(inp, tar, epoch, create_summ):
   target_ids_, target_mask, target_segment_ids = tar
   mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
@@ -88,12 +88,13 @@ def val_step(inp, tar, epoch, create_summ):
   refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)
   loss = draft_summary_loss + refine_summary_loss
   validation_loss(loss)
-  validation_accuracy(tar_real, predictions)
-  # if create_summ: 
-  #   rouge, bert = tf_write_summary(tar_real, predictions, inp[:, 1:], epoch)  
-  # else: 
-  #   rouge, bert = (1.0, 1.0)  
-  # return (rouge, bert)
+  validation_accuracy(target_ids_[:, 1:], draft_predictions)
+  validation_accuracy(target_ids_[:, :-1], refine_predictions)  
+  if create_summ: 
+    rouge, bert = tf_write_summary(target_ids_[:, :-1], refine_predictions, epoch)  
+  else: 
+    rouge, bert = (1.0, 1.0)  
+  return (rouge, bert)
   
 def check_ckpt(checkpoint_path):
     ckpt = tf.train.Checkpoint(

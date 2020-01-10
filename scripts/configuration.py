@@ -14,15 +14,15 @@ hyp = {
      'last_recorded_value': None,
      'monitor_metric' : 'combined_metric',
      'monitor_only_after': 1,        # monitor the monitor_metric only after this epoch                                           
-     'max_tokens_per_line' : 400,   # 1763 = 90 percentile  
+     'max_tokens_per_line' : 1763,   # 1763 = 90 percentile  
      'num_examples_to_train': None,   #If None then all the examples in the dataset will be used to train
      'num_examples_to_infer': None,
      'num_heads': 8,                  # the number of heads in the multi-headed attention unit
-     'num_layers': 8,                 # number of transformer blocks
+     'num_layers': 6,                 # number of transformer blocks
      'print_chks': 50,                # print training progress per number of batches specified
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
-     'summ_length': 40,
+     'summ_length': 72,
      'target_vocab_size': 30522,       # total vocab size + start and end token
      'test_size': 0.05,               # test set split size
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used

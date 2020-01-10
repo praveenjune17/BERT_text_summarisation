@@ -11,9 +11,9 @@ from create_tokenizer import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
 
-#log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
-#_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
-#rouge_all = Rouge()
+log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
+_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
+rouge_all = Rouge()
 
 
 
@@ -37,6 +37,19 @@ def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
     V = tf.cast(V, dtype=inputs.dtype)
     return ((1-epsilon) * inputs) + (epsilon / V)
 
+def convert_wordpiece_to_words(w_piece):
+  new=[]
+  for i in w_piece:
+    if '##' in i:
+      m = i.replace('##', '')
+    else:
+      if w_piece.index(i) == 0:
+        m = i
+      else:
+        m = ' '+i
+    new.append(m)
+  return (''.join(new))
+
 def loss_function(real, pred, mask):
   #mask = tf.math.logical_not(tf.math.equal(real, 0))
   #real = label_smoothing(tf.one_hot(real, depth=tokenizer.vocab_size+2))
@@ -51,25 +64,32 @@ def get_loss_and_accuracy():
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     return(loss, accuracy)
     
-def write_summary(tar_real, predictions, inp, epoch, write=config.write_summary_op):
+def write_summary(tar_real, predictions, epoch, write=config.write_summary_op):
   r_avg_final = []
   total_summary = []
   for i, sub_tar_real in enumerate(tar_real):
     predicted_id = tf.cast(tf.argmax(predictions[i], axis=-1), tf.int32)
-    sum_ref = tokenizer.decode([i for i in sub_tar_real if i < tokenizer.vocab_size])
-    sum_hyp = tokenizer.decode([i for i in predicted_id if i < tokenizer.vocab_size if i > 0])
+    sum_ref = tokenizer.convert_ids_to_tokens([i for i in sub_tar_real.numpy() if i not in [0, 101, 102]])
+    #en_sent = tokenizer_en.convert_ids_to_tokens([i for i in sub_ip_eng.numpy() if i not in [0, 101, 102]])
+    sum_hyp = tokenizer.convert_ids_to_tokens([i for i in predicted_id.numpy() if i not in [0, 101, 102]])
+    sum_ref = convert_wordpiece_to_words(sum_ref)
+    sum_hyp = convert_wordpiece_to_words(sum_hyp)
     # don't consider empty values for ROUGE and BERT score calculation
     if sum_hyp and sum_ref:
       total_summary.append((sum_ref, sum_hyp))
   ref_sents = [ref for ref, _ in total_summary]
   hyp_sents = [hyp for _, hyp in total_summary]
   # returns :- dict of dicts
-  if ref_sents and hyp_sents:  
-      rouges = rouge_all.get_scores(ref_sents , hyp_sents)
-      avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
-      _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
-      rouge_score =  avg_rouge_f1.astype('float64')
-      bert_f1_score =  np.mean(bert_f1.tolist(), dtype=np.float64)
+  if ref_sents and hyp_sents:
+      try:  
+        rouges = rouge_all.get_scores(ref_sents , hyp_sents)
+        avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
+        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
+        rouge_score =  avg_rouge_f1.astype('float64')
+        bert_f1_score =  np.mean(bert_f1.tolist(), dtype=np.float64)
+      except ValueError:
+        rouge_score = 0
+        bert_f1_score = 0
   else:
       rouge_score = 0
       bert_f1_score = 0
@@ -81,8 +101,8 @@ def write_summary(tar_real, predictions, inp, epoch, write=config.write_summary_
   return (rouge_score, bert_f1_score)
   
   
-def tf_write_summary(tar_real, predictions, inp, epoch):
-  return tf.py_function(write_summary, [tar_real, predictions, inp, epoch], Tout=[tf.float32, tf.float32])
+def tf_write_summary(tar_real, predictions, epoch):
+  return tf.py_function(write_summary, [tar_real, predictions, epoch], Tout=[tf.float32, tf.float32])
     
 
 def monitor_run(latest_ckpt, 
