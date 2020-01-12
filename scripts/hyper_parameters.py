@@ -7,13 +7,13 @@ for device in gpu_devices:
     tf.config.experimental.set_memory_growth(device, True)
 
 hyp = {
-	 'accumulation_steps': 36,                                                                                   # TODO
+	 'accumulation_steps': 36,                                                                                  
 	 'batch_size': 1,
-	 'beam_sizes': [2, 3, 4],        # Used only during inference                                                 #TODO for training
+	 'beam_sizes': [2, 3, 4],        # Used only during inference                                                 
 	 'combined_metric_weights': [0.4, 0.3, 0.3], #(bert_score, rouge, validation accuracy)
-	 'dropout_rate': 0.0,
-	 'epochs': 20,
-	 'epsilon_ls': 0.0,              # label_smoothing hyper parameter
+	 'dropout_rate': 0.15,
+	 'epochs': 4,
+	 'epsilon_ls': 0.1,              # label_smoothing hyper parameter
 	 'grad_clipnorm':None,
 	 'l2_norm':0,
 	 'learning_rate': 3e-4,          # set learning rate decay
