@@ -16,7 +16,7 @@ from metrics import convert_wordpiece_to_words
 from rouge import Rouge
 from bert_score import score as b_score
 
-
+MASK_ID = 103
 rouge_all = Rouge()
 infer_template = '''Beam size <--- {}\
                     ROUGE-f1  <--- {}\
@@ -82,41 +82,41 @@ def draft_decoded_summary(model, input_ids, target_ids, beam_size):
     start = [101] * batch
     end = [102]
     # (batch_size, seq_len, d_bert)
-    enc_output = model.bert_model(input_ids)[0]
-    enc_output = tf.tile(enc_output, multiples=[beam_size, 1])
+    enc_output_ = model.bert_model(input_ids)[0]
+    enc_output = tf.tile(enc_output_, multiples=[beam_size,1, 1])
+    input_ids = tf.tile(input_ids, multiples=[beam_size, 1])
     # (batch_size, 1, 1, seq_len), (_), (batch_size, 1, 1, seq_len)
     def beam_search_decoder(target_ids):
-      _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])    
+      _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids)    
       draft_logits, _ = model.draft_summary(
+                                            input_ids=input_ids,
                                             enc_output=enc_output,
                                             look_ahead_mask=combined_mask,
                                             padding_mask=dec_padding_mask,
-                                            target_ids=target_ids[:, :-1],
+                                            target_ids=target_ids,
                                             training=False
                                           )
       # (batch_size, 1, target_vocab_size)
       return (draft_logits[:,-1:,:])
-  return beam_search(
-                   beam_search_decoder, 
-                   start, 
-                   beam_size, 
-                   config.summ_length, 
-                   config.input_vocab_size, 
-                   h_parms.length_penalty, 
-                   stop_early=True, 
-                   eos_id=[end]
-                  )
+    return (beam_search(
+                    beam_search_decoder, 
+                    start, 
+                    beam_size, 
+                    config.summ_length, 
+                    config.input_vocab_size, 
+                    h_parms.length_penalty, 
+                    stop_early=True, 
+                    eos_id=[end]
+                    ),
+            enc_output_)
 
-def refined_summary_greedy(model, enc_output, draft_summary, padding_mask, training=False):
+def refined_summary_greedy(model, input_ids, enc_output, draft_summary, padding_mask, training=False):
         """
         Inference call, builds a refined summary
         
         It first masks each word in the summary draft one by one,
         then feeds the draft to BERT to generate context vectors.
-        """
-        
-        log.info("Building: 'Greedy Refined Summary'")
-                
+        """                
         refined_summary = draft_summary
         refined_summary_mask = tf.cast(tf.math.equal(draft_summary, 0), tf.float32)
         refined_summary_segment_ids = tf.zeros(tf.shape(draft_summary))
@@ -125,10 +125,7 @@ def refined_summary_greedy(model, enc_output, draft_summary, padding_mask, train
         T = tf.shape(draft_summary)[1]
         
         dec_outputs, attention_dists = [], []
-        
-        #dec_logits += [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.target_vocab_size), axis=0), [N, 1, 1])]
-
-        for i in tqdm(range(1, model.output_seq_len)):
+        for i in range(1, model.output_seq_len):
             
             # (batch_size, seq_len)
             refined_summary_ = mask_timestamp(refined_summary, i, MASK_ID)
@@ -138,6 +135,7 @@ def refined_summary_greedy(model, enc_output, draft_summary, padding_mask, train
             
             # (batch_size, seq_len, vocab_len), (_)
             dec_output, attention_dist = model.decoder(
+                                                        input_ids,
                                                         context_vectors,
                                                         enc_output,
                                                         training=training,
@@ -147,26 +145,18 @@ def refined_summary_greedy(model, enc_output, draft_summary, padding_mask, train
             
             # (batch_size, 1, vocab_len)
             dec_output_i = dec_output[:, i:i+1 ,:]
-            
             dec_outputs += [dec_output_i]
-            attention_dists += [{k: v[:, i:i+1, :] for k, v in attention_dist.items()}]
-            
-            # (batch_size, 1, vocab_len)
-            #logits = self.final_layer(dec_output_i)
-            
-            #dec_logits += [logits]            
-        
-            # (batch_size, 1)
-            preds = tf.to_int32(tf.argmax(dec_outputs, axis=-1))            
+            # (batch_size, 1) 
+            preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
+
+            if tf.squeeze(preds, axis=0) == 102:
+              refined_summary = with_column(refined_summary, i, preds)
+              return refined_summary, attention_dist       
             
             # (batch_size, seq_len)
             refined_summary = with_column(refined_summary, i, preds)
-            
-        # (batch_size, seq_len, vocab_len)            
-        #dec_logits = tf.concat(dec_logits, axis=1)            
-        
         # (batch_size, seq_len), (_)        
-        return refined_summary, attention_dists
+        return refined_summary, attention_dist
 
 def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
     for beam_size in beam_sizes_to_try:
@@ -175,11 +165,11 @@ def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
       for (doc_id, (input_ids, _, _, target_ids, _, _)) in enumerate(dataset, 1):
         start_time = time.time()
         # translated_output_temp[0] (batch, beam_size, summ_length+1)
-        translated_output_temp = draft_decoded_summary(model, input_ids, target_ids, beam_size)
+        translated_output_temp, enc_output = draft_decoded_summary(model, input_ids, target_ids[:, :-1], beam_size)
         draft_predictions = translated_output_temp[0][:,0,:]
         _, _, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
-        refined_summary, attention_dists = refined_summary_greedy(model, enc_output, draft_predictions, dec_padding_mask, training=False)
-        sum_ref = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(summary) if i not in [0, 101, 102]])
+        refined_summary, attention_dists = refined_summary_greedy(model, input_ids, enc_output, draft_predictions, dec_padding_mask, training=False)
+        sum_ref = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(target_ids) if i not in [0, 101, 102]])
         sum_hyp = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(refined_summary) if i not in [0, 101, 102]])
         sum_ref = convert_wordpiece_to_words(sum_ref)
         sum_hyp = convert_wordpiece_to_words(sum_hyp)
@@ -188,10 +178,15 @@ def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
         if sum_ref and sum_hyp:
           ref_sents.append(sum_ref)
           hyp_sents.append(sum_hyp)
-      rouges = rouge_all.get_scores(ref_sents , hyp_sents)
-      avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
-      _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
-      print(infer_template.format(beam_size, avg_rouge_f1, np.mean(bert_f1.numpy())))
+      try:
+        rouges = rouge_all.get_scores(ref_sents , hyp_sents)
+        avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
+        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
+        avg_bert_f1 = np.mean(bert_f1.numpy())
+      except:
+        avg_rouge_f1 = 0
+        avg_bert_f1 = 0
+      print(infer_template.format(beam_size, avg_rouge_f1, avg_bert_f1))
       print(f'time to process document {doc_id} : {time.time()-start_time}') 
 
 if __name__ == '__main__':
