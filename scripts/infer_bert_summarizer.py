@@ -4,43 +4,69 @@ tf.random.set_seed(100)
 import time
 import os
 import numpy as np
-from create_tokenizer import tokenizer
-from abstractive_summarizer import AbstractiveSummarization
+from create_tokenizer import tokenizer, model
 from transformer import create_masks
 from hyper_parameters import h_parms
 from configuration import config
 from input_path import file_path
+from abstractive_summarizer_v2 import AbstractiveSummarization
 from beam_search import beam_search
 from preprocess import infer_data_from_df
+from metrics import convert_wordpiece_to_words
 from rouge import Rouge
 from bert_score import score as b_score
 
-draft_summary_model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                vocab_size=config.input_vocab_size,
-                                input_seq_len=config.doc_length, 
-                                output_seq_len=config.summ_length, 
-                                rate=h_parms.dropout_rate,
-                                add_stage_2=False
-                                )
-refine_summary_model = AbstractiveSummarization(
-                                num_layers=config.num_layers, 
-                                d_model=config.d_model, 
-                                num_heads=config.num_heads, 
-                                dff=config.dff, 
-                                vocab_size=config.input_vocab_size,
-                                input_seq_len=config.doc_length, 
-                                output_seq_len=config.summ_length, 
-                                rate=h_parms.dropout_rate,
-                                add_stage_2=True
-                                )
+
 rouge_all = Rouge()
 infer_template = '''Beam size <--- {}\
                     ROUGE-f1  <--- {}\
                     BERT-f1   <--- {}'''
+
+model = AbstractiveSummarization(
+                                num_layers=config.num_layers, 
+                                d_model=config.d_model, 
+                                num_heads=config.num_heads, 
+                                dff=config.dff, 
+                                vocab_size=config.input_vocab_size,
+                                output_seq_len=config.summ_length, 
+                                rate=h_parms.dropout_rate
+                                )
+
+def with_column(x, i, column):
+    """
+    Given a tensor `x`, change its i-th column with `column`
+    x :: (N, T)
+    return :: (N, T)
+    """
+
+    N, T = tf.shape(x)[0], tf.shape(x)[1]
+
+    left = x[:, :i]
+    right = x[:, i+1:]
+        
+    return tf.concat([left, column, right], axis=1)
+
+def mask_timestamp(x, i, mask_with):
+    """
+    Masks each word in the summary draft one by one with the [MASK] token
+    At t-th time step the t-th word of input summary is
+    masked, and the decoder predicts the refined word given other
+    words of the summary.
+    
+    x :: (N, T)
+    return :: (N, T)
+    """
+
+    N, T = tf.shape(x)[0], tf.shape(x)[1]
+
+    left = x[:, :i]
+    right = x[:, i+1:]
+    
+    mask = tf.ones([N, 1], dtype=x.dtype) * mask_with
+    
+    masked = tf.concat([left, mask, right], axis=1)
+
+    return masked
 
 def restore_chkpt(checkpoint_path):
     ckpt = tf.train.Checkpoint(
@@ -50,54 +76,118 @@ def restore_chkpt(checkpoint_path):
     ckpt.restore(checkpoint_path).expect_partial()
     print(f'{checkpoint_path} restored')
 
-def beam_search_eval(document, beam_size):
-  
-  start = [tokenizer.vocab_size] 
-  end = [tokenizer.vocab_size+1]
-  encoder_input = tf.tile(document, multiples=[beam_size, 1])
-  batch, inp_shape = encoder_input.shape
-  def decoder_query(output):
-    enc_padding_mask, combined_mask, dec_padding_mask = create_masks(
-                                                                     encoder_input, 
-                                                                     output
-                                                                     )
-    predictions, attention_weights, dec_output = draft_summary_model(
-                                                       encoder_input, 
-                                                       output,
-                                                       enc_padding_mask,
-                                                       combined_mask,
-                                                       dec_padding_mask,
-                                                       False
-                                                       )
-
-    # (batch_size, 1, target_vocab_size)
-    return (predictions[:,-1:,:])  
+#@tf.function
+def draft_decoded_summary(model, input_ids, target_ids, beam_size):
+    batch = tf.shape(input_ids)[0]
+    start = [101] * batch
+    end = [102]
+    # (batch_size, seq_len, d_bert)
+    enc_output = model.bert_model(input_ids)[0]
+    enc_output = tf.tile(enc_output, multiples=[beam_size, 1])
+    # (batch_size, 1, 1, seq_len), (_), (batch_size, 1, 1, seq_len)
+    def beam_search_decoder(target_ids):
+      _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])    
+      draft_logits, _ = model.draft_summary(
+                                            enc_output=enc_output,
+                                            look_ahead_mask=combined_mask,
+                                            padding_mask=dec_padding_mask,
+                                            target_ids=target_ids[:, :-1],
+                                            training=False
+                                          )
+      # (batch_size, 1, target_vocab_size)
+      return (draft_logits[:,-1:,:])
   return beam_search(
-                     decoder_query, 
-                     start, 
-                     beam_size, 
-                     config.summ_length, 
-                     config.input_vocab_size, 
-                     h_parms.length_penalty, 
-                     stop_early=True, 
-                     eos_id=[end]
-                    )
+                   beam_search_decoder, 
+                   start, 
+                   beam_size, 
+                   config.summ_length, 
+                   config.input_vocab_size, 
+                   h_parms.length_penalty, 
+                   stop_early=True, 
+                   eos_id=[end]
+                  )
+
+def refined_summary_greedy(model, enc_output, draft_summary, padding_mask, training=False):
+        """
+        Inference call, builds a refined summary
+        
+        It first masks each word in the summary draft one by one,
+        then feeds the draft to BERT to generate context vectors.
+        """
+        
+        log.info("Building: 'Greedy Refined Summary'")
+                
+        refined_summary = draft_summary
+        refined_summary_mask = tf.cast(tf.math.equal(draft_summary, 0), tf.float32)
+        refined_summary_segment_ids = tf.zeros(tf.shape(draft_summary))
+                
+        N = tf.shape(draft_summary)[0]            
+        T = tf.shape(draft_summary)[1]
+        
+        dec_outputs, attention_dists = [], []
+        
+        #dec_logits += [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.target_vocab_size), axis=0), [N, 1, 1])]
+
+        for i in tqdm(range(1, model.output_seq_len)):
+            
+            # (batch_size, seq_len)
+            refined_summary_ = mask_timestamp(refined_summary, i, MASK_ID)
+            
+            # (batch_size, seq_len, d_bert)
+            context_vectors = model.bert_model(refined_summary_)[0]
+            
+            # (batch_size, seq_len, vocab_len), (_)
+            dec_output, attention_dist = model.decoder(
+                                                        context_vectors,
+                                                        enc_output,
+                                                        training=training,
+                                                        look_ahead_mask=None,
+                                                        padding_mask=padding_mask
+                                                      )
+            
+            # (batch_size, 1, vocab_len)
+            dec_output_i = dec_output[:, i:i+1 ,:]
+            
+            dec_outputs += [dec_output_i]
+            attention_dists += [{k: v[:, i:i+1, :] for k, v in attention_dist.items()}]
+            
+            # (batch_size, 1, vocab_len)
+            #logits = self.final_layer(dec_output_i)
+            
+            #dec_logits += [logits]            
+        
+            # (batch_size, 1)
+            preds = tf.to_int32(tf.argmax(dec_outputs, axis=-1))            
+            
+            # (batch_size, seq_len)
+            refined_summary = with_column(refined_summary, i, preds)
+            
+        # (batch_size, seq_len, vocab_len)            
+        #dec_logits = tf.concat(dec_logits, axis=1)            
+        
+        # (batch_size, seq_len), (_)        
+        return refined_summary, attention_dists
 
 def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
     for beam_size in beam_sizes_to_try:
-      total_summary = []
-      for (doc_id, (document, summary)) in enumerate(dataset, 1):
+      ref_sents = []
+      hyp_sents = []
+      for (doc_id, (input_ids, _, _, target_ids, _, _)) in enumerate(dataset, 1):
         start_time = time.time()
         # translated_output_temp[0] (batch, beam_size, summ_length+1)
-        translated_output_temp = beam_search_eval(document, beam_size)
+        translated_output_temp = draft_decoded_summary(model, input_ids, target_ids, beam_size)
         draft_predictions = translated_output_temp[0][:,0,:]
-        sum_ref = tokenizer.decode([j for j in tf.squeeze(summary) if j < tokenizer.vocab_size])
-        sum_hyp = tokenizer.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer.vocab_size])
-        total_summary.append((sum_ref, sum_hyp))
-        print('Original summary: {}'.format(tokenizer.decode([j for j in tf.squeeze(summary) if j < tokenizer.vocab_size])))
-        print('Predicted summary: {}'.format(tokenizer.decode([j for j in tf.squeeze(translated_output_temp[0][:,0,:]) if j < tokenizer.vocab_size])))
-      ref_sents = [ref for ref, _ in total_summary]
-      hyp_sents = [hyp for _, hyp in total_summary]
+        _, _, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
+        refined_summary, attention_dists = refined_summary_greedy(model, enc_output, draft_predictions, dec_padding_mask, training=False)
+        sum_ref = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(summary) if i not in [0, 101, 102]])
+        sum_hyp = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(refined_summary) if i not in [0, 101, 102]])
+        sum_ref = convert_wordpiece_to_words(sum_ref)
+        sum_hyp = convert_wordpiece_to_words(sum_hyp)
+        print('Original summary: {}'.format(sum_ref))
+        print('Predicted summary: {}'.format(sum_hyp))
+        if sum_ref and sum_hyp:
+          ref_sents.append(sum_ref)
+          hyp_sents.append(sum_hyp)
       rouges = rouge_all.get_scores(ref_sents , hyp_sents)
       avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
       _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')

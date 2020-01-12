@@ -133,6 +133,7 @@ for epoch in range(h_parms.epochs):
                     train_accuracy.result(), 
                     model
                     )
+  ckpt_save_path = ck_pt_mgr.save()
   #count_recs(batch, epoch, num_of_train_examples)
   (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
                                                                       val_dataset, 
@@ -142,7 +143,7 @@ for epoch in range(h_parms.epochs):
                                                                       validation_loss, 
                                                                       validation_accuracy
                                                                       )
-  ckpt_save_path = ck_pt_mgr.save()
+  
   latest_ckpt+=epoch
   log.info(
            model_metrics.format(

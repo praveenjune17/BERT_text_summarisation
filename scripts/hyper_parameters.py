@@ -7,7 +7,7 @@ for device in gpu_devices:
     tf.config.experimental.set_memory_growth(device, True)
 
 hyp = {
-	 'accumulation_steps': 32,                                                                                   # TODO
+	 'accumulation_steps': 36,                                                                                   # TODO
 	 'batch_size': 1,
 	 'beam_sizes': [2, 3, 4],        # Used only during inference                                                 #TODO for training
 	 'combined_metric_weights': [0.4, 0.3, 0.3], #(bert_score, rouge, validation accuracy)

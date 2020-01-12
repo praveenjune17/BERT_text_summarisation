@@ -9,6 +9,7 @@ hyp = {
      'd_model': 768,                  # the projected word vector dimension
      'dff': 2048,                      # feed forward network hidden parameters
      'early_stop' : True,
+     'eval_after' : 1000,              #Run evaluation after this many samples are trained 
      'init_tolerance':0,
      'input_vocab_size': 30522,        # total vocab size + start and end token
      'last_recorded_value': None,
@@ -19,7 +20,7 @@ hyp = {
      'num_examples_to_infer': None,
      'num_heads': 8,                  # the number of heads in the multi-headed attention unit
      'num_layers': 8,                 # number of transformer blocks
-     'print_chks': 50,                # print training progress per number of batches specified
+     'print_chks': 5,                # print training progress per number of batches specified
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
      'summ_length': 72,

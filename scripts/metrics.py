@@ -70,7 +70,6 @@ def write_summary(tar_real, predictions, epoch, write=config.write_summary_op):
   for i, sub_tar_real in enumerate(tar_real):
     predicted_id = tf.cast(tf.argmax(predictions[i], axis=-1), tf.int32)
     sum_ref = tokenizer.convert_ids_to_tokens([i for i in sub_tar_real.numpy() if i not in [0, 101, 102]])
-    #en_sent = tokenizer_en.convert_ids_to_tokens([i for i in sub_ip_eng.numpy() if i not in [0, 101, 102]])
     sum_hyp = tokenizer.convert_ids_to_tokens([i for i in predicted_id.numpy() if i not in [0, 101, 102]])
     sum_ref = convert_wordpiece_to_words(sum_ref)
     sum_hyp = convert_wordpiece_to_words(sum_hyp)

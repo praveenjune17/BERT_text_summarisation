@@ -102,7 +102,7 @@ def filter_max_length(x, x1, x2, y, y1, y2):
 
 def filter_combined_length(x, x1, x2, y, y1, y2):
     return tf.math.less_equal(
-                              (tf.size(x[0]) + tf.size(y[0])), 
+                              (tf.math.count_nonzero(x) + tf.math.count_nonzero(y)), 
                               config.max_tokens_per_line
                              )
                         
@@ -124,7 +124,7 @@ def map_batch_shuffle(dataset, buffer_size, split,
                                 ), num_parallel_calls=tf.data.experimental.AUTOTUNE
                             )
     if not filter_off:
-        tf_dataset = tf_dataset.filter(filter_max_length)
+        tf_dataset = tf_dataset.filter(filter_combined_length)
     tf_dataset = tf_dataset.cache()
     if split == 'train' and shuffle and (not config.use_tfds):
        tf_dataset = tf_dataset.shuffle(buffer_size, seed = 100)
@@ -135,7 +135,7 @@ def map_batch_shuffle(dataset, buffer_size, split,
 def create_train_data(num_samples_to_train = config.num_examples_to_train, shuffle=True, filter_off=False):
 
     if config.use_tfds:
-        examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True, data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset')
+        examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True, data_dir='D://tfds')
         other_ds = 'validation' if 'validation' in examples else 'test'
         train_examples = examples['train']
         valid_examples = examples[other_ds]

@@ -1,6 +1,6 @@
 import pandas as pd
 from transformers import BertTokenizer
-from abstractive_summarizer import AbstractiveSummarization
+from abstractive_summarizer_v2 import AbstractiveSummarization
 from hyper_parameters import h_parms
 from configuration import config
 
