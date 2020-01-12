@@ -20,7 +20,7 @@ hyp = {
      'num_examples_to_infer': None,
      'num_heads': 8,                  # the number of heads in the multi-headed attention unit
      'num_layers': 8,                 # number of transformer blocks
-     'print_chks': 5,                # print training progress per number of batches specified
+     'print_chks': 50,                # print training progress per number of batches specified
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
      'summ_length': 72,
