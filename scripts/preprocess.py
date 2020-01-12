@@ -135,7 +135,7 @@ def map_batch_shuffle(dataset, buffer_size, split,
 def create_train_data(num_samples_to_train = config.num_examples_to_train, shuffle=True, filter_off=False):
 
     if config.use_tfds:
-        examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True, data_dir='D://tfds')
+        examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True, data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset')
         other_ds = 'validation' if 'validation' in examples else 'test'
         train_examples = examples['train']
         valid_examples = examples[other_ds]
