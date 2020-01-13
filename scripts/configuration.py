@@ -48,6 +48,7 @@ try:
         if (' - tensorflow - INFO - Epoch 'in line):
           last_batch_trained=line.split('Batch')[1].split('Train_Loss')[0]
           config['start_from_batch']=int(last_batch_trained.strip())
+          print(f"Starting training from batch {config['last_recorded_value']}")
         else:
           continue
     if not config['last_recorded_value']:
