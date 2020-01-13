@@ -97,7 +97,7 @@ def check_ckpt(checkpoint_path):
                                model=model,
                                optimizer=optimizer
                               )
-    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, keep_checkpoint_every_n_hours=0.3, max_to_keep=20)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=3)
     if tf.train.latest_checkpoint(checkpoint_path):
       ckpt.restore(ckpt_manager.latest_checkpoint)
       log.info(ckpt_manager.latest_checkpoint +' restored')
