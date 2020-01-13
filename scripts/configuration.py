@@ -44,11 +44,11 @@ try:
           (line[[i for i,char in enumerate((line)) if char.isdigit()][-1]+1] == '\n'):          
           config['last_recorded_value'] = float(line.split(config.monitor_metric)[1].split('\n')[0].strip())
           print(f"last_recorded_value of {config.monitor_metric} retained from last run {config['last_recorded_value']}")
-          break
         if (' - tensorflow - INFO - Epoch 'in line):
           last_batch_trained=line.split('Batch')[1].split('Train_Loss')[0]
           config['start_from_batch']=int(last_batch_trained.strip())
-          print(f"Starting training from batch {config['last_recorded_value']}")
+          print(f"Starting training from batch {config['start_from_batch']}")
+          break
         else:
           continue
     if not config['last_recorded_value']:
