@@ -144,7 +144,7 @@ def monitor_run(latest_ckpt,
     config.last_recorded_value =  monitor_metrics[to_monitor]
     ckpt_files_tocopy = [files for files in os.listdir(os.path.split(ckpt_save_path)[0]) \
                          if ckpt_string in files]
-    log.info(f'{to_monitor} is {monitor_metrics[to_monitor]} so checkpoint files {ckpt_string}           \
+    log.info(f'{to_monitor} is {monitor_metrics[to_monitor]:4f} so checkpoint files {ckpt_string}           \
              will be copied to best checkpoint directory')
     # copy the best checkpoints
     shutil.copy2(os.path.join(ckpt_fold, 'checkpoint'), file_path.best_ckpt_path)
