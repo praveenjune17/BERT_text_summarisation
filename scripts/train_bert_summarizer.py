@@ -137,7 +137,7 @@ for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, 
               )
   if grad_accum_flag:
     batch_run_check(
-                  step,  
+                  step+1,  
                   start, 
                   train_summary_writer, 
                   train_loss.result(), 
@@ -146,8 +146,10 @@ for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, 
                   )
   eval_frequency = ((step+1) * h_parms.batch_size) % config.eval_after
   if eval_frequency == 0:
-    print(tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
-    print(tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
+    predicted = (tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
+    target = (tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
+    print(f'the golden summary is {target}')
+    print(f'the predicted summary is {predicted if predicted else "EMPTY"}')
     ckpt_save_path = ck_pt_mgr.save()
     (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
                                                                         val_dataset, 
