@@ -15,7 +15,7 @@ model = AbstractiveSummarization(
                                 rate=h_parms.dropout_rate
                                 )
 
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = BertTokenizer.from_pretrained(config.pretrained_bert_model)
 
 def create_dataframe(path, num_examples):
     df = pd.read_csv(path)

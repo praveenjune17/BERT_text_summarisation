@@ -179,7 +179,7 @@ def infer_data_from_df(num_of_infer_examples=config.num_examples_to_infer):
                                       infer_examples, 
                                       infer_buffer_size, 
                                       split = 'infer',
-                                      batch_size=1             #TODO  if > 1 then (ip and op) might be shuffled during beam search 
+                                      batch_size=1              
                                       )
     log.info('infer tf_dataset created')
     return infer_dataset

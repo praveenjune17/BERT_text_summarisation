@@ -12,7 +12,7 @@ from bert_score import score as b_score
 from creates import log, monitor_metrics
 
 log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
-_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type='bert-base-uncased')
+_, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type=config.pretrained_bert_model)
 rouge_all = Rouge()
 
 
@@ -32,7 +32,8 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
 
 def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
-    V = inputs.get_shape().as_list()[-1] # number of channels
+    # number of channels
+    V = inputs.get_shape().as_list()[-1] 
     epsilon = tf.cast(epsilon, dtype=inputs.dtype)
     V = tf.cast(V, dtype=inputs.dtype)
     return ((1-epsilon) * inputs) + (epsilon / V)
@@ -62,7 +63,7 @@ def get_loss_and_accuracy():
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     return(loss, accuracy)
     
-def write_summary(tar_real, predictions, epoch, write=config.write_summary_op):
+def write_summary(tar_real, predictions, step, write=config.write_summary_op):
   r_avg_final = []
   total_summary = []
   for i, sub_tar_real in enumerate(tar_real):
@@ -81,7 +82,7 @@ def write_summary(tar_real, predictions, epoch, write=config.write_summary_op):
       try:  
         rouges = rouge_all.get_scores(ref_sents , hyp_sents)
         avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
-        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
+        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type=config.pretrained_bert_model)
         rouge_score =  avg_rouge_f1.astype('float64')
         bert_f1_score =  np.mean(bert_f1.tolist(), dtype=np.float64)
       except ValueError:
@@ -91,15 +92,15 @@ def write_summary(tar_real, predictions, epoch, write=config.write_summary_op):
       rouge_score = 0
       bert_f1_score = 0
   
-  if write and (epoch)%config.write_per_epoch == 0:
-    with tf.io.gfile.GFile(file_path.summary_write_path+str(epoch.numpy()), 'w') as f:
+  if write and (step)%config.write_per_step == 0:
+    with tf.io.gfile.GFile(file_path.summary_write_path+str(step.numpy()), 'w') as f:
       for ref, hyp in total_summary:
         f.write(ref+'\t'+hyp+'\n')
   return (rouge_score, bert_f1_score)
   
   
-def tf_write_summary(tar_real, predictions, epoch):
-  return tf.py_function(write_summary, [tar_real, predictions, epoch], Tout=[tf.float32, tf.float32])
+def tf_write_summary(tar_real, predictions, step):
+  return tf.py_function(write_summary, [tar_real, predictions, step], Tout=[tf.float32, tf.float32])
     
 
 def monitor_run(latest_ckpt, 
@@ -109,16 +110,16 @@ def monitor_run(latest_ckpt,
                 bert_score, 
                 rouge_score, 
                 valid_summary_writer,
-                epoch,
+                step,
                 to_monitor=config.monitor_metric):
   
   ckpt_fold, ckpt_string = os.path.split(ckpt_save_path)
   if config.run_tensorboard:
     with valid_summary_writer.as_default():
-      tf.summary.scalar('validation_total_loss', val_acc, step=epoch)
-      tf.summary.scalar('validation_total_accuracy', val_loss, step=epoch)
-      tf.summary.scalar('ROUGE_f1', rouge_score, step=epoch)
-      tf.summary.scalar('BERT_f1', bert_score, step=epoch)
+      tf.summary.scalar('validation_total_loss', val_acc, step=step)
+      tf.summary.scalar('validation_total_accuracy', val_loss, step=step)
+      tf.summary.scalar('ROUGE_f1', rouge_score, step=step)
+      tf.summary.scalar('BERT_f1', bert_score, step=step)
   monitor_metrics = dict()
   monitor_metrics['validation_loss'] = val_loss
   monitor_metrics['validation_accuracy'] = val_acc

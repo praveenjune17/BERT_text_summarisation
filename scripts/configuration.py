@@ -9,7 +9,7 @@ hyp = {
      'd_model': 768,                  # the projected word vector dimension
      'dff': 2048,                      # feed forward network hidden parameters
      'early_stop' : True,
-     'eval_after' : 1000,              #Run evaluation after this many samples are trained 
+     'eval_after' : 5000,              #Run evaluation after this many samples are trained 
      'init_tolerance':0,
      'input_vocab_size': 30522,        # total vocab size + start and end token
      'last_recorded_value': None,
@@ -21,6 +21,7 @@ hyp = {
      'num_heads': 8,                  # the number of heads in the multi-headed attention unit
      'num_layers': 8,                 # number of transformer blocks
      'print_chks': 50,                # print training progress per number of batches specified
+     'pretrained_bert_model': 'bert-base-uncased',
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
      'summ_length': 72,
@@ -30,7 +31,7 @@ hyp = {
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used
      'tolerance_threshold': 5,        # tolerance counter used for early stopping
      'use_tfds' : True,               # use tfds datasets as input to the model 
-     'write_per_epoch': 1,            # write summary for every specified epoch
+     'write_per_step': 5000,            # write summary for every specified epoch
      'write_summary_op': True         # write validation summary to hardisk
      }                                    
 

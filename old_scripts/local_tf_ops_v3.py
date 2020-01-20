@@ -1,16 +1,31 @@
 import tensorflow as tf
 import time
+from hyper_parameters import h_parms
 from configuration import config
 from creates import log
+from metrics import label_smoothing
 
 train_step_signature = [
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64)
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
+                      tf.TensorSpec(shape=(None), dtype=tf.bool)
                       ]
 
 val_step_signature = [
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
                       tf.TensorSpec(shape=(None), dtype=tf.int32),
                       tf.TensorSpec(shape=(None), dtype=tf.bool)
                      ]
@@ -27,15 +42,14 @@ checkpoint_details = 'Saving checkpoint for epoch {} at {}'
 batch_zero = 'Time taken to feed the input data to the model {} seconds'
 batch_run_details = 'Epoch {} Batch {} Train_Loss {:.4f} Train_Accuracy {:.4f}'
 
-
 # run every batch
-def batch_run_check(batch, epoch, start, train_summary_writer, train_loss, train_accuracy, transformer):
+def batch_run_check(batch, epoch, start, train_summary_writer, train_loss, train_accuracy, model):
   if config.run_tensorboard:
     with train_summary_writer.as_default():
       tf.summary.scalar('train_loss', train_loss, step=batch)
       tf.summary.scalar('train_accuracy', train_accuracy, step=batch)
   if batch==0 and epoch ==0:
-    log.info(transformer.summary())
+    log.info(model.summary())
     log.info(batch_zero.format(time.time()-start))
   if batch % config.print_chks == 0:
     log.info(
@@ -65,12 +79,34 @@ def calc_validation_loss(validation_dataset,
                          validation_accuracy):
   total_val_acc_avg = tf.keras.metrics.Mean()
   total_val_loss_avg = tf.keras.metrics.Mean()
-  for (batch, (inp, tar)) in enumerate(validation_dataset):
+  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(validation_dataset):
     # calculate rouge for only the first batch
     if batch == 0:
-      rouge_score, bert_score = val_step(inp, tar, epoch, config.write_summary_op)
+      mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+      target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
+      rouge_score, bert_score = val_step(input_ids, 
+                                         input_mask, 
+                                         input_segment_ids, 
+                                         target_ids_, 
+                                         target_mask, 
+                                         target_segment_ids, 
+                                         target_ids, 
+                                         mask, 
+                                         epoch, 
+                                         config.write_summary_op
+                                         )
     else:
-      _ = val_step(inp, tar, epoch, False)
+      _  =  val_step(input_ids, 
+                     input_mask, 
+                     input_segment_ids, 
+                     target_ids_, 
+                     target_mask, 
+                     target_segment_ids, 
+                     target_ids, 
+                     mask, 
+                     epoch, 
+                     False
+                     )
     if config.run_tensorboard:
       with valid_summary_writer.as_default():
         tf.summary.scalar('validation_loss', validation_loss.result(), step=batch)

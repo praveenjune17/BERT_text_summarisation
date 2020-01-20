@@ -1,7 +1,7 @@
 import tensorflow as tf
 from transformers import TFBertModel
 from tensorflow.keras.initializers import Constant
-from transformer import create_masks, Decoder, Pointer_Generator
+from transformer import create_masks, Decoder
 from creates import log
 from configuration import config
 
@@ -45,43 +45,9 @@ def tile_and_mask_diagonal(x, mask_with):
 
 def _embedding_from_bert():
 
-  log.info("Extracting pretrained word embeddings weights from BERT")
-  #BERT_MODEL_URL = "https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/1"
-  
-  # dinput_word_ids = tf.keras.layers.Input(shape=(config.summ_length,), dtype=tf.int32,
-  #                                       name="input_word_ids")
-  # dinput_mask = tf.keras.layers.Input(shape=(config.summ_length,), dtype=tf.int32,
-  #                                   name="input_mask")
-  # dsegment_ids = tf.keras.layers.Input(shape=(config.summ_length,), dtype=tf.int32,
-  #                                     name="segment_ids")
-  # einput_word_ids = tf.keras.layers.Input(shape=(config.doc_length,), dtype=tf.int32,
-  #                                       name="input_word_ids")
-  # einput_mask = tf.keras.layers.Input(shape=(config.doc_length,), dtype=tf.int32,
-  #                                   name="input_mask")
-  # esegment_ids = tf.keras.layers.Input(shape=(config.doc_length,), dtype=tf.int32,
-  #                                     name="segment_ids")
-  #bert_layer = hub.KerasLayer(BERT_MODEL_URL, trainable=False)
-  
-  vocab_of_BERT = TFBertModel.from_pretrained('bert-base-uncased', trainable=False)
+  log.info("Extracting pretrained word embeddings weights from BERT")  
+  vocab_of_BERT = TFBertModel.from_pretrained(config.pretrained_bert_model, trainable=False)
   embedding_matrix = vocab_of_BERT.get_weights()[0]
-  # trainable_vars = vocab_of_BERT.variables      
-  # # Remove unused layers
-  # trainable_vars = [var for var in trainable_vars if not "/cls/" in var.name]
-
-  # # Select how many layers to fine tune
-  # trainable_vars = []
-
-  # # Add to trainable weights
-  # for var in trainable_vars:
-  #     vocab_of_BERT.trainable_weights.append(var)
-
-  # for var in vocab_of_BERT.variables:
-  #     if var not in vocab_of_BERT.trainable_weights:
-  #         vocab_of_BERT.non_trainable_weights.append(var) 
-  #_, dsequence_output = vocab_of_BERT([dinput_word_ids, dinput_mask, dsegment_ids])
-  #_, esequence_output = vocab_of_BERT([einput_word_ids, einput_mask, esegment_ids])
-  #dec_model = tf.keras.models.Model(inputs=[dinput_word_ids, dinput_mask, dsegment_ids], outputs=dsequence_output)  
-  #enc_model = tf.keras.models.Model(inputs=[einput_word_ids, einput_mask, esegment_ids], outputs=esequence_output)  
   log.info(f"Embedding matrix shape '{embedding_matrix.shape}'")
   return (embedding_matrix, vocab_of_BERT)
 
@@ -103,12 +69,9 @@ class AbstractiveSummarization(tf.keras.Model):
         
         self.decoder = Decoder(num_layers, d_model, num_heads, dff, vocab_size, rate)
         self.d_model = d_model
-        if config.copy_gen:
-            self.pointer_generator   = Pointer_Generator()
-                
-        self.final_layer = tf.keras.layers.Dense(vocab_size)
 
     def draft_summary(self,
+                      input_ids,
                       enc_output,
                       look_ahead_mask,
                       padding_mask,
@@ -116,19 +79,20 @@ class AbstractiveSummarization(tf.keras.Model):
                       training):
         # (batch_size, seq_len, d_bert)
         embeddings = self.embedding(target_ids) 
-        # (batch_size, seq_len, d_bert), (_)            
-        draft_dec_outputs, draft_attention_dist = self.decoder(
-                                                                embeddings, 
-                                                                enc_output, 
-                                                                training, 
-                                                                look_ahead_mask, 
-                                                                padding_mask
-                                                                )
+        # (batch_size, seq_len, vocab_len), (_)            
+        draft_logits, draft_attention_dist = self.decoder(
+                                                          input_ids,
+                                                          embeddings, 
+                                                          enc_output, 
+                                                          training, 
+                                                          look_ahead_mask, 
+                                                          padding_mask
+                                                          )
         # (batch_size, seq_len, vocab_len)
-        draft_logits = self.final_layer(draft_dec_outputs)
-        return draft_logits, draft_attention_dist, draft_dec_outputs
+        return draft_logits, draft_attention_dist
 
-    def refine_summary(self, 
+    def refine_summary(self,
+                       input_ids, 
                        enc_output, 
                        target, 
                        padding_mask, 
@@ -152,15 +116,16 @@ class AbstractiveSummarization(tf.keras.Model):
         # (batch_size x (seq_len - 1), seq_len, d_bert)
         context_vectors = self.bert_model(dec_inp_ids)[0]
 
-        # (batch_size x (seq_len - 1), seq_len, d_bert), (_)
+        # (batch_size x (seq_len - 1), seq_len, vocab_len), (_)
         dec_outputs, refine_attention_dist = self.decoder(
+                                                           tf.tile(input_ids, [T-1, 1]),
                                                            context_vectors,
                                                            enc_output,
                                                            training,
                                                            look_ahead_mask=None,
                                                            padding_mask=padding_mask
                                                          )
-        # (batch_size x (seq_len - 1), seq_len - 1, d_bert)
+        # (batch_size x (seq_len - 1), seq_len - 1, vocab_len)
         dec_outputs = dec_outputs[:, 1:, :]
         # (batch_size x (seq_len - 1), (seq_len - 1))
         diag = tf.linalg.set_diag(tf.zeros([T-1, T-1]), tf.ones([T-1]))
@@ -169,61 +134,55 @@ class AbstractiveSummarization(tf.keras.Model):
         where = tf.not_equal(diag, 0)
         indices = tf.where(where)
         
-        # (batch_size x (seq_len - 1), d_bert)
+        # (batch_size x (seq_len - 1), vocab_len)
         dec_outputs = tf.gather_nd(dec_outputs, indices)
         
-        # (batch_size, seq_len - 1, d_bert)
+        # (batch_size, seq_len - 1, vocab_len)
         dec_outputs = tf.reshape(dec_outputs, [N, T-1, -1])
-        # (batch_size, seq_len, d_bert)
-        refine_dec_outputs = tf.concat(
-                           [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], self.d_model), axis=0), [N, 1, 1]), dec_outputs],
+        # (batch_size, seq_len, vocab_len)
+        refine_logits = tf.concat(
+                           [tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], self.vocab_size), axis=0), [N, 1, 1]), dec_outputs],
                            axis=1
                            )
 
 
         # (batch_size, seq_len, vocab_len)
-        refine_logits = self.final_layer(refine_dec_outputs)
-        return refine_logits, refine_attention_dist, refine_dec_outputs
+        return refine_logits, refine_attention_dist
 
-    def call(self, input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids, training):
-        # (batch_size, seq_len) x3
-        #input_ids, input_mask, input_segment_ids = inp
-        
-        # (batch_size, seq_len + 1) x3
-        #target_ids, target_mask, target_segment_ids = tar
+    def call(self, 
+             input_ids, 
+             input_mask, 
+             input_segment_ids, 
+             target_ids, 
+             target_mask, 
+             target_segment_ids, 
+             training):
 
-        # (batch_size, 1, 1, seq_len), (_), (batch_size, 1, 1, seq_len)
+           # (batch_size, 1, 1, seq_len), (batch_size, 1, 1, seq_len)
         _, combined_mask, dec_padding_mask = create_masks(input_ids, target_ids[:, :-1])
 
         # (batch_size, seq_len, d_bert)
-        enc_output = self.bert_model(input_ids)[0]#, input_mask, input_segment_ids)
+        enc_output = self.bert_model(input_ids)[0]
 
-        
-        draft_logits, draft_attention_dist, draft_dec_outputs = self.draft_summary(
-                                                                                    enc_output=enc_output,
-                                                                                    look_ahead_mask=combined_mask,
-                                                                                    padding_mask=dec_padding_mask,
-                                                                                    target_ids=target_ids[:, :-1],
-                                                                                    training=True
-                                                                                )
+        # (batch_size, seq_len, vocab_len), _
+        draft_logits, draft_attention_dist = self.draft_summary(
+                                                                input_ids,
+                                                                enc_output=enc_output,
+                                                                look_ahead_mask=combined_mask,
+                                                                padding_mask=dec_padding_mask,
+                                                                target_ids=target_ids[:, :-1],
+                                                                training=True
+                                                               )
 
-        if config.copy_gen: 
-            draft_logits = self.pointer_generator(
-                                            draft_dec_outputs, 
-                                            draft_logits, 
-                                            draft_attention_dist, 
-                                            input_ids, 
-                                            tf.shape(input_ids)[1], 
-                                            tf.shape(target_ids[:, :-1])[1], 
-                                            training=training
-                                            )
-
-        # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
-        refine_logits, refine_attention_dist, refine_dec_outputs = self.refine_summary(
-                                                                                        enc_output=enc_output,
-                                                                                        target=(target_ids[:, :-1], target_mask[:, :-1], target_segment_ids[:, :-1]),            
-                                                                                        padding_mask=dec_padding_mask,
-                                                                                        training=True
-                                                                                    )
+        # (batch_size, seq_len, vocab_len), _
+        refine_logits, refine_attention_dist = self.refine_summary(
+                                                                  input_ids,
+                                                                  enc_output=enc_output,
+                                                                  target=(target_ids[:, :-1], 
+                                                                          target_mask[:, :-1], 
+                                                                          target_segment_ids[:, :-1]),            
+                                                                  padding_mask=dec_padding_mask,
+                                                                  training=True
+                                                                  )
               
-        return draft_logits, draft_attention_dist, draft_dec_outputs, refine_logits, refine_attention_dist, refine_dec_outputs
+        return draft_logits, draft_attention_dist, refine_logits, refine_attention_dist

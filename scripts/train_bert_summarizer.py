@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import sys
+sys.path.insert(0, '/content/BERT_text_summarisation/scripts')
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tensorflow as tf
@@ -9,49 +11,46 @@ import time
 from preprocess import create_train_data
 from hyper_parameters import h_parms
 from configuration import config
-from metrics import optimizer, loss_function, get_loss_and_accuracy, tf_write_summary, monitor_run
+from metrics import optimizer, loss_function, label_smoothing, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
 from create_tokenizer import tokenizer, model
-#from abstractive_summarizer_v3 import AbstractiveSummarization
 from local_tf_ops import *
 
 #policy = mixed_precision.Policy('mixed_float16')
 #mixed_precision.set_policy(policy)
 #optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')
-# config_tf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
-# gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-# for device in gpu_devices:
-#     tf.config.experimental.set_memory_growth(device, True)
-# config_tf = tf.ConfigProto(allow_soft_placement=True)
-# config_tf.gpu_options.allow_growth=True
-# run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
-
-def label_smoothing(inputs, epsilon=h_parms.epsilon_ls):
-    V = inputs.get_shape().as_list()[-1] # number of channels
-    epsilon = tf.cast(epsilon, dtype=inputs.dtype)
-    V = tf.cast(V, dtype=inputs.dtype)
-    return ((1-epsilon) * inputs) + (epsilon / V)
 
 train_dataset, val_dataset, num_of_train_examples, _ = create_train_data()
 train_loss, train_accuracy = get_loss_and_accuracy()
 validation_loss, validation_accuracy = get_loss_and_accuracy()
 accumulators = []
 @tf.function(input_signature=train_step_signature)
-def train_step(input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids, target_ids, mask, grad_accum_flag):
+def train_step(input_ids, 
+               input_mask, 
+               input_segment_ids, 
+               target_ids_, 
+               target_mask, 
+               target_segment_ids, 
+               target_ids, 
+               draft_mask, 
+               refine_mask,
+               grad_accum_flag):
   with tf.GradientTape() as tape:
-    draft_predictions, draft_attention_weights, draft_dec_output, refine_predictions, refine_attention_weights, refine_dec_output = model(
-                                                                                                                                         input_ids, input_mask, input_segment_ids, 
-                                                                                                                                         target_ids_, target_mask, target_segment_ids, 
-                                                                                                                                         True
-                                                                                                                                         )
+    (draft_predictions, draft_attention_weights, 
+      refine_predictions, refine_attention_weights) = model(
+                                                           input_ids, input_mask, input_segment_ids, 
+                                                           target_ids_, target_mask, target_segment_ids, 
+                                                           True
+                                                           )
     train_variables = model.trainable_variables
-    draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
-    refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)
+    draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, draft_mask)
+    refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, refine_mask)
     loss = draft_summary_loss + refine_summary_loss
-    #scaled_loss = optimizer.get_scaled_loss(loss)
+    loss = tf.reduce_mean(loss)
+    #loss = optimizer.get_scaled_loss(loss)
   gradients  = tape.gradient(loss, train_variables)
-  #gradients = optimizer.get_unscaled_gradients(scaled_gradients)
+  #gradients = optimizer.get_unscaled_gradients(gradients)
   # Initialize the shadow variables with same type as the gradients 
   if not accumulators:
     for tv in gradients:
@@ -61,43 +60,49 @@ def train_step(input_ids, input_mask, input_segment_ids, target_ids_, target_mas
     accumulator.assign_add(grad)
   # apply the gradients and reset them to zero if the flag is true
   if grad_accum_flag:
-    for accumlator in accumulators:
-      accumulator.assign(tf.math.divide(accumulator,h_parms.accumulation_steps))
     optimizer.apply_gradients(zip(accumulators, train_variables))
     for accumulator in (accumulators):
         accumulator.assign(tf.zeros_like(accumulator))
-  train_loss(loss)
-  train_accuracy(target_ids_[:, 1:], draft_predictions)
-  train_accuracy(target_ids_[:, :-1], refine_predictions)  
   
-#@tf.function(input_signature=val_step_signature)
-def val_step(inp, tar, epoch, create_summ):
-  target_ids_, target_mask, target_segment_ids = tar
-  mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
-  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
-  draft_predictions, draft_attention_weights, draft_dec_output, refine_predictions, refine_attention_weights, refine_dec_output = model(
-                                                                                                                                       inp, 
-                                                                                                                                       tar, 
-                                                                                                                                       False
-                                                                                                                                       )
+    train_loss(loss)
+    train_accuracy(target_ids_[:, :-1], refine_predictions)  
+  return (target_ids_[:, :-1], refine_predictions)
+
+@tf.function(input_signature=val_step_signature)
+def val_step(input_ids, 
+             input_mask, 
+             input_segment_ids, 
+             target_ids_, 
+             target_mask, 
+             target_segment_ids, 
+             target_ids, 
+             draft_mask, 
+             refine_mask,
+             step, 
+             create_summ):
+  (draft_predictions, draft_attention_weights, 
+   refine_predictions, refine_attention_weights) = model(
+                                                         input_ids, input_mask, input_segment_ids, 
+                                                         target_ids_, target_mask, target_segment_ids, 
+                                                         False
+                                                         )
   draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
   refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)
   loss = draft_summary_loss + refine_summary_loss
   validation_loss(loss)
-  validation_accuracy(target_ids_[:, 1:], draft_predictions)
   validation_accuracy(target_ids_[:, :-1], refine_predictions)  
   if create_summ: 
-    rouge, bert = tf_write_summary(target_ids_[:, :-1], refine_predictions, epoch)  
+    rouge, bert = tf_write_summary(target_ids_[:, :-1], refine_predictions, step)  
   else: 
     rouge, bert = (1.0, 1.0)  
   return (rouge, bert)
-  
+
 def check_ckpt(checkpoint_path):
     ckpt = tf.train.Checkpoint(
                                model=model,
                                optimizer=optimizer
                               )
-    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, keep_checkpoint_every_n_hours=0.3, max_to_keep=20)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=10)
     if tf.train.latest_checkpoint(checkpoint_path):
       ckpt.restore(ckpt_manager.latest_checkpoint)
       log.info(ckpt_manager.latest_checkpoint +' restored')
@@ -109,62 +114,73 @@ def check_ckpt(checkpoint_path):
 
 # if a checkpoint exists, restore the latest checkpoint.
 ck_pt_mgr, latest_ckpt = check_ckpt(file_path.checkpoint_path)
-for epoch in range(h_parms.epochs):
-  start = time.time()  
-  train_loss.reset_states()
-  train_accuracy.reset_states()
-  validation_loss.reset_states()
-  validation_accuracy.reset_states()
-  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(train_dataset):
-  # the target is shifted right during training hence its shape is subtracted by 1
-  # not able to do this inside tf.function since it doesn't allow this operation
-    inp = input_ids, input_mask, input_segment_ids
-    tar = target_ids_, target_mask, target_segment_ids
-    mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
-    target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
-    grad_accum_flag = True if (batch+1)%h_parms.accumulation_steps == 0 else False
-    train_step(input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids, target_ids, mask, grad_accum_flag)
+total_steps = int(h_parms.epochs * (h_parms.accumulation_steps))
+train_dataset = train_dataset.repeat(total_steps)
+count=0
+
+for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(train_dataset):
+  count+=1
+  start=time.time()
+  draft_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+  refine_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, :-1], 0))
+  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
+  grad_accum_flag = True if (step+1)%h_parms.accumulation_steps == 0 else False
+  target_x, refine_predictions=train_step(
+              input_ids, 
+              input_mask, 
+              input_segment_ids, 
+              target_ids_, 
+              target_mask, 
+              target_segment_ids, 
+              target_ids, 
+              draft_mask,
+              refine_mask,
+              grad_accum_flag
+              )
+  if grad_accum_flag:
     batch_run_check(
-                    batch, 
-                    epoch, 
-                    start, 
-                    train_summary_writer, 
-                    train_loss.result(), 
-                    train_accuracy.result(), 
-                    model
-                    )
-  ckpt_save_path = ck_pt_mgr.save()
-  #count_recs(batch, epoch, num_of_train_examples)
-  (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
-                                                                      val_dataset, 
-                                                                      epoch+1, 
-                                                                      val_step, 
-                                                                      valid_summary_writer, 
-                                                                      validation_loss, 
-                                                                      validation_accuracy
-                                                                      )
-  
-  latest_ckpt+=epoch
-  log.info(
-           model_metrics.format(
-                                epoch+1, 
-                                train_loss.result(), 
-                                train_accuracy.result(),
-                                val_loss, 
-                                val_acc,
-                                rouge_score, 
-                                bert_score
-                               )
-          )
-  log.info(epoch_timing.format(epoch + 1, time.time() - start))
-  log.info(checkpoint_details.format(epoch+1, ckpt_save_path))
-  if not monitor_run(
-                     latest_ckpt, 
-                     ckpt_save_path, 
-                     val_loss, 
-                     val_acc, 
-                     bert_score, 
-                     rouge_score, 
-                     valid_summary_writer, 
-                     epoch):
-    break
+                  step,  
+                  start, 
+                  train_summary_writer, 
+                  train_loss.result(), 
+                  train_accuracy.result(), 
+                  model
+                  )
+  eval_frequency = (step * h_parms.batch_size) % config.eval_after
+  if eval_frequency == 0:
+    print(tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
+    print(tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
+    ckpt_save_path = ck_pt_mgr.save()
+    (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
+                                                                        val_dataset, 
+                                                                        step, 
+                                                                        val_step, 
+                                                                        valid_summary_writer, 
+                                                                        validation_loss, 
+                                                                        validation_accuracy
+                                                                        )
+    
+    latest_ckpt+=step
+    log.info(
+             model_metrics.format(
+                                  step, 
+                                  train_loss.result(), 
+                                  train_accuracy.result(),
+                                  val_loss, 
+                                  val_acc,
+                                  rouge_score, 
+                                  bert_score
+                                 )
+            )
+    log.info(evaluation_step.format(step, time.time() - start))
+    log.info(checkpoint_details.format(step, ckpt_save_path))
+    if not monitor_run(
+                       latest_ckpt, 
+                       ckpt_save_path, 
+                       val_loss, 
+                       val_acc, 
+                       bert_score, 
+                       rouge_score, 
+                       valid_summary_writer, 
+                       step):
+      break  

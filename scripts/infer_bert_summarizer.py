@@ -181,7 +181,7 @@ def run_inference(dataset, beam_sizes_to_try=h_parms.beam_sizes):
       try:
         rouges = rouge_all.get_scores(ref_sents , hyp_sents)
         avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
-        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type='bert-base-uncased')
+        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type=config.pretrained_bert_model)
         avg_bert_f1 = np.mean(bert_f1.numpy())
       except:
         avg_rouge_f1 = 0

@@ -3,6 +3,7 @@ import time
 from hyper_parameters import h_parms
 from configuration import config
 from creates import log
+from metrics import label_smoothing
 
 train_step_signature = [
                       tf.TensorSpec(shape=(None, None), dtype=tf.int32),
@@ -13,46 +14,52 @@ train_step_signature = [
                       tf.TensorSpec(shape=(None, None), dtype=tf.int32),
                       tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
                       tf.TensorSpec(shape=(None, None), dtype=tf.bool),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
                       tf.TensorSpec(shape=(None), dtype=tf.bool)
                       ]
 
 val_step_signature = [
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                      tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                      tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
+                      tf.TensorSpec(shape=(None, None), dtype=tf.bool),
                       tf.TensorSpec(shape=(None), dtype=tf.int32),
                       tf.TensorSpec(shape=(None), dtype=tf.bool)
                      ]
   
-model_metrics = 'Epoch {}\n,\
+model_metrics = 'Step {}\n,\
                  Train Loss {:.4f}\n,\
                  Train_Accuracy {:.4f}\n,\
                  validation_loss {:.4f}\n,\
                  validation_accuracy {:4f}\n,\
                  ROUGE_f1 {:4f}\n,\
                  BERT_f1 {:4f}\n'
-epoch_timing  = 'Time taken for {} epoch : {} secs' 
-checkpoint_details = 'Saving checkpoint for epoch {} at {}'
+evaluation_step  = 'Time taken for {} step : {} secs' 
+checkpoint_details = 'Saving checkpoint at step {} on {}'
 batch_zero = 'Time taken to feed the input data to the model {} seconds'
-batch_run_details = 'Epoch {} Batch {} Train_Loss {:.4f} Train_Accuracy {:.4f}'
+batch_run_details = 'Step {} Train_Loss {:.4f} Train_Accuracy {:.4f}'
 
 # run every batch
-def batch_run_check(batch, epoch, start, train_summary_writer, train_loss, train_accuracy, model):
+def batch_run_check(batch, start, train_summary_writer, train_loss, train_accuracy, model):
   if config.run_tensorboard:
     with train_summary_writer.as_default():
       tf.summary.scalar('train_loss', train_loss, step=batch)
       tf.summary.scalar('train_accuracy', train_accuracy, step=batch)
-  if batch==0 and epoch ==0:
+  if batch==0:
     log.info(model.summary())
     log.info(batch_zero.format(time.time()-start))
-  if batch % config.print_chks == 0:
-    log.info(
-             batch_run_details.format(
-                                     epoch + 1, 
-                                     batch, 
-                                     train_loss, 
-                                     train_accuracy
-                                     )
-            )
+  log.info(
+           batch_run_details.format(
+                                   batch, 
+                                   train_loss, 
+                                   train_accuracy
+                                   )
+          )
 
 # run after each epoch
 def count_recs(batch, epoch, num_of_train_examples):
@@ -65,22 +72,41 @@ def count_recs(batch, epoch, num_of_train_examples):
       log.info('End of epoch')
 
 def calc_validation_loss(validation_dataset, 
-                         epoch, 
+                         step, 
                          val_step, 
                          valid_summary_writer, 
                          validation_loss, 
                          validation_accuracy):
   total_val_acc_avg = tf.keras.metrics.Mean()
   total_val_loss_avg = tf.keras.metrics.Mean()
-  #for (batch, (inp, tar)) in enumerate(validation_dataset):
-  for (batch, (input_ids, input_mask, input_segment_ids, target_ids, target_mask, target_segment_ids)) in enumerate(validation_dataset):
-    inp = input_ids, input_mask, input_segment_ids
-    tar = target_ids, target_mask, target_segment_ids
+  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(validation_dataset):
     # calculate rouge for only the first batch
     if batch == 0:
-      rouge_score, bert_score = val_step(inp, tar, epoch, config.write_summary_op)
+      mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+      target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
+      rouge_score, bert_score = val_step(input_ids, 
+                                         input_mask, 
+                                         input_segment_ids, 
+                                         target_ids_, 
+                                         target_mask, 
+                                         target_segment_ids, 
+                                         target_ids, 
+                                         mask, 
+                                         step, 
+                                         config.write_summary_op
+                                         )
     else:
-      _ = val_step(inp, tar, epoch, False)
+      _  =  val_step(input_ids, 
+                     input_mask, 
+                     input_segment_ids, 
+                     target_ids_, 
+                     target_mask, 
+                     target_segment_ids, 
+                     target_ids, 
+                     mask, 
+                     step, 
+                     False
+                     )
     if config.run_tensorboard:
       with valid_summary_writer.as_default():
         tf.summary.scalar('validation_loss', validation_loss.result(), step=batch)
