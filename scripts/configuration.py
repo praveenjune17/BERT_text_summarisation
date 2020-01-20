@@ -31,6 +31,7 @@ hyp = {
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used
      'tolerance_threshold': 5,        # tolerance counter used for early stopping
      'use_tfds' : True,               # use tfds datasets as input to the model 
+     'valid_samples_to_eval' : 100,
      'write_per_step': 5000,            # write summary for every specified epoch
      'write_summary_op': True         # write validation summary to hardisk
      }                                    
