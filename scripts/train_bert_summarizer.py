@@ -87,6 +87,7 @@ def val_step(input_ids,
   draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, draft_mask)
   refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, refine_mask)
   loss = draft_summary_loss + refine_summary_loss
+  loss = tf.reduce_mean(loss)
   validation_loss(loss)
   validation_accuracy(target_ids_[:, :-1], refine_predictions)  
   if create_summ: 
@@ -117,70 +118,71 @@ train_dataset = train_dataset.repeat(total_steps)
 count=0
 
 for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(train_dataset):
-  count+=1
-  start=time.time()
-  draft_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
-  refine_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, :-1], 0))
-  target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
-  grad_accum_flag = True if (step+1)%h_parms.accumulation_steps == 0 else False
-  target_x, refine_predictions=train_step(
-              input_ids, 
-              input_mask, 
-              input_segment_ids, 
-              target_ids_, 
-              target_mask, 
-              target_segment_ids, 
-              target_ids, 
-              draft_mask,
-              refine_mask,
-              grad_accum_flag
+  if step >= config.start_from_batch:
+    count+=1
+    start=time.time()
+    draft_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+    refine_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, :-1], 0))
+    target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
+    grad_accum_flag = True if (step+1)%h_parms.accumulation_steps == 0 else False
+    target_x, refine_predictions=train_step(
+                input_ids, 
+                input_mask, 
+                input_segment_ids, 
+                target_ids_, 
+                target_mask, 
+                target_segment_ids, 
+                target_ids, 
+                draft_mask,
+                refine_mask,
+                grad_accum_flag
+                )
+    if grad_accum_flag:
+      batch_run_check(
+                    step+1,  
+                    start, 
+                    train_summary_writer, 
+                    train_loss.result(), 
+                    train_accuracy.result(), 
+                    model
+                    )
+    eval_frequency = ((step+1) * h_parms.batch_size) % config.eval_after
+    if eval_frequency == 0:
+      predicted = (tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
+      target = (tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
+      print(f'the golden summary is {target}')
+      print(f'the predicted summary is {predicted if predicted else "EMPTY"}')
+      ckpt_save_path = ck_pt_mgr.save()
+      (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
+                                                                          val_dataset, 
+                                                                          step+1, 
+                                                                          val_step, 
+                                                                          valid_summary_writer, 
+                                                                          validation_loss, 
+                                                                          validation_accuracy
+                                                                          )
+      
+      latest_ckpt+=(step+1)
+      log.info(
+               model_metrics.format(
+                                    step+1, 
+                                    train_loss.result(), 
+                                    train_accuracy.result(),
+                                    val_loss, 
+                                    val_acc,
+                                    rouge_score, 
+                                    bert_score
+                                   )
               )
-  if grad_accum_flag:
-    batch_run_check(
-                  step+1,  
-                  start, 
-                  train_summary_writer, 
-                  train_loss.result(), 
-                  train_accuracy.result(), 
-                  model
-                  )
-  eval_frequency = ((step+1) * h_parms.batch_size) % config.eval_after
-  if eval_frequency == 0:
-    predicted = (tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
-    target = (tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
-    print(f'the golden summary is {target}')
-    print(f'the predicted summary is {predicted if predicted else "EMPTY"}')
-    ckpt_save_path = ck_pt_mgr.save()
-    (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
-                                                                        val_dataset, 
-                                                                        step+1, 
-                                                                        val_step, 
-                                                                        valid_summary_writer, 
-                                                                        validation_loss, 
-                                                                        validation_accuracy
-                                                                        )
-    
-    latest_ckpt+=(step+1)
-    log.info(
-             model_metrics.format(
-                                  step+1, 
-                                  train_loss.result(), 
-                                  train_accuracy.result(),
-                                  val_loss, 
-                                  val_acc,
-                                  rouge_score, 
-                                  bert_score
-                                 )
-            )
-    log.info(evaluation_step.format(step+1, time.time() - start))
-    log.info(checkpoint_details.format(step+1, ckpt_save_path))
-    if not monitor_run(
-                       latest_ckpt, 
-                       ckpt_save_path, 
-                       val_loss, 
-                       val_acc, 
-                       bert_score, 
-                       rouge_score, 
-                       valid_summary_writer, 
-                       step+1):
-      break  
+      log.info(evaluation_step.format(step+1, time.time() - start))
+      log.info(checkpoint_details.format(step+1, ckpt_save_path))
+      if not monitor_run(
+                         latest_ckpt, 
+                         ckpt_save_path, 
+                         val_loss, 
+                         val_acc, 
+                         bert_score, 
+                         rouge_score, 
+                         valid_summary_writer, 
+                         step+1):
+        break  
