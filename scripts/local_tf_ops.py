@@ -82,7 +82,8 @@ def calc_validation_loss(validation_dataset,
   for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(validation_dataset):
     # calculate rouge for only the first batch
     if batch == 0:
-      mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+      draft_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
+      refine_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, :-1], 0))
       target_ids = label_smoothing(tf.one_hot(target_ids_, depth=config.input_vocab_size))
       rouge_score, bert_score = val_step(input_ids, 
                                          input_mask, 
@@ -91,7 +92,8 @@ def calc_validation_loss(validation_dataset,
                                          target_mask, 
                                          target_segment_ids, 
                                          target_ids, 
-                                         mask, 
+                                         draft_mask, 
+                                         refine_mask, 
                                          step, 
                                          config.write_summary_op
                                          )
@@ -103,7 +105,8 @@ def calc_validation_loss(validation_dataset,
                      target_mask, 
                      target_segment_ids, 
                      target_ids, 
-                     mask, 
+                     draft_mask, 
+                     refine_mask,
                      step, 
                      False
                      )

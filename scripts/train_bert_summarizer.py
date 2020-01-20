@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-sys.path.insert(0, '/content/BERT_text_summarisation/scripts')
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tensorflow as tf
@@ -86,8 +84,8 @@ def val_step(input_ids,
                                                          target_ids_, target_mask, target_segment_ids, 
                                                          False
                                                          )
-  draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, mask)
-  refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, mask)
+  draft_summary_loss = loss_function(target_ids[:, 1:, :], draft_predictions, draft_mask)
+  refine_summary_loss = loss_function(target_ids[:, :-1, :], refine_predictions, refine_mask)
   loss = draft_summary_loss + refine_summary_loss
   validation_loss(loss)
   validation_accuracy(target_ids_[:, :-1], refine_predictions)  
@@ -146,24 +144,24 @@ for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, 
                   train_accuracy.result(), 
                   model
                   )
-  eval_frequency = (step * h_parms.batch_size) % config.eval_after
+  eval_frequency = ((step+1) * h_parms.batch_size) % config.eval_after
   if eval_frequency == 0:
     print(tokenizer.decode([i for i in tf.squeeze(tf.argmax(refine_predictions,axis=-1)) if i not in [101,102,0]]))
     print(tokenizer.decode([i for i in tf.squeeze(target_x) if i not in [101,102,0]]))
     ckpt_save_path = ck_pt_mgr.save()
     (val_acc, val_loss, rouge_score, bert_score) = calc_validation_loss(
                                                                         val_dataset, 
-                                                                        step, 
+                                                                        step+1, 
                                                                         val_step, 
                                                                         valid_summary_writer, 
                                                                         validation_loss, 
                                                                         validation_accuracy
                                                                         )
     
-    latest_ckpt+=step
+    latest_ckpt+=(step+1)
     log.info(
              model_metrics.format(
-                                  step, 
+                                  step+1, 
                                   train_loss.result(), 
                                   train_accuracy.result(),
                                   val_loss, 
@@ -172,8 +170,8 @@ for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, 
                                   bert_score
                                  )
             )
-    log.info(evaluation_step.format(step, time.time() - start))
-    log.info(checkpoint_details.format(step, ckpt_save_path))
+    log.info(evaluation_step.format(step+1, time.time() - start))
+    log.info(checkpoint_details.format(step+1, ckpt_save_path))
     if not monitor_run(
                        latest_ckpt, 
                        ckpt_save_path, 
@@ -182,5 +180,5 @@ for (step, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, 
                        bert_score, 
                        rouge_score, 
                        valid_summary_writer, 
-                       step):
+                       step+1):
       break  
