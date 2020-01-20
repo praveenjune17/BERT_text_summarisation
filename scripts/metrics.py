@@ -51,13 +51,11 @@ def convert_wordpiece_to_words(w_piece):
   return (''.join(new))
 
 def loss_function(real, pred, mask):
-  #mask = tf.math.logical_not(tf.math.equal(real, 0))
-  #real = label_smoothing(tf.one_hot(real, depth=tokenizer.vocab_size+2))
   # pred shape == real shape = (batch_size, tar_seq_len, target_vocab_size)
   loss_ = loss_object(real, pred)
   mask = tf.cast(mask, dtype=loss_.dtype)
   loss_ *= mask
-  return tf.reduce_mean(loss_)
+  return loss_
 
 def get_loss_and_accuracy():
     loss = tf.keras.metrics.Mean()
