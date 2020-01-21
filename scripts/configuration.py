@@ -46,21 +46,21 @@ try:
           (line[[i for i,char in enumerate((line)) if char.isdigit()][-1]+1] == '\n'):          
           config['last_recorded_value'] = float(line.split(config.monitor_metric)[1].split('\n')[0].strip())
           print(f"last_recorded_value of {config.monitor_metric} retained from last run {config['last_recorded_value']}")
-        if (' - tensorflow - INFO - Epoch 'in line):
-          last_batch_trained=line.split('Batch')[1].split('Train_Loss')[0]
-          config['start_from_batch']=int(last_batch_trained.strip())
-          print(f"Starting training from batch {config['start_from_batch']}")
+#         if (' - tensorflow - INFO - Epoch 'in line):
+#           last_batch_trained=line.split('Batch')[1].split('Train_Loss')[0]
+#           config['start_from_batch']=int(last_batch_trained.strip())
+#           print(f"Starting training from batch {config['start_from_batch']}")
           break
         else:
           continue
     if not config['last_recorded_value']:
       print('setting default value to last_recorded_value')
       config['last_recorded_value'] = 0 if config.monitor_metric != 'validation_loss' else float('inf')
-    if not config['start_from_batch']:
-      print('setting default value to start_from_batch')
-      config['start_from_batch'] = 0 
+#     if not config['start_from_batch']:
+#       print('setting default value to start_from_batch')
+#       config['start_from_batch'] = 0 
 except FileNotFoundError:
   print('setting default value to last_recorded_value')
-  print('setting default value to start_from_batch')
+  #print('setting default value to start_from_batch')
   config['last_recorded_value'] = 0 if config.monitor_metric != 'validation_loss' else float('inf')
-  config['start_from_batch'] = 0 
+  #config['start_from_batch'] = 0 
