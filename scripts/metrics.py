@@ -10,6 +10,7 @@ from input_path import file_path
 from create_tokenizer import tokenizer
 from bert_score import score as b_score
 from creates import log, monitor_metrics
+from decode_text import argmax
 
 log.info('Loading Pre-trained BERT model for BERT SCORE calculation')
 _, _, _ = b_score(["I'm Batman"], ["I'm Spiderman"], lang='en', model_type=config.pretrained_bert_model)
@@ -67,7 +68,9 @@ def write_summary(tar_real, predictions, step, write=config.write_summary_op):
   r_avg_final = []
   total_summary = []
   for i, sub_tar_real in enumerate(tar_real):
-    predicted_id = tf.cast(tf.argmax(predictions[i], axis=-1), tf.int32)
+    #predicted_id = tf.cast(tf.argmax(predictions[i], axis=-1), tf.int32)
+    decoded_logits = argmax(predictions[i])
+    predicted_id = tf.cast(decoded_logits, tf.int32)
     sum_ref = tokenizer.convert_ids_to_tokens([i for i in sub_tar_real.numpy() if i not in [0, 101, 102]])
     sum_hyp = tokenizer.convert_ids_to_tokens([i for i in predicted_id.numpy() if i not in [0, 101, 102]])
     sum_ref = convert_wordpiece_to_words(sum_ref)
