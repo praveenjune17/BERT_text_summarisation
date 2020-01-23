@@ -25,7 +25,7 @@ hyp = {
      'run_tensorboard': True,
      'show_detokenized_samples' : False,
      'summ_length': 72,
-     'start_from_batch':70000,
+     'start_from_batch':71244,
      'target_vocab_size': 30522,       # total vocab size + start and end token
      'test_size': 0.05,               # test set split size
      'tfds_name' : 'cnn_dailymail',   # tfds dataset to be used
