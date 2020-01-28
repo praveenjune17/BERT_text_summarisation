@@ -11,7 +11,7 @@ from configuration import config
 from metrics import optimizer, loss_function, label_smoothing, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer import tokenizer, model
+from create_tokenizer_inference import tokenizer, model
 from local_tf_ops import *
 from beam_search import beam_search
 from transformer import create_masks
