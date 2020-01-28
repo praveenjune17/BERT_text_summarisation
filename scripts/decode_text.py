@@ -256,14 +256,12 @@ def predict_greedy(inp):
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
 
+''' 
+Set the latest checkpoint and run the below piece of code for inference. 
 ckpt = tf.train.Checkpoint(
                            model=model,
                            optimizer=optimizer
                           )
-
-''' 
-Set the latest checkpoint and run the below piece of code for inference. 
-
 ckpt.restore('/content/drive/My Drive/Text_summarization/BERT_text_summarisation/cnn_checkpoints/ckpt-35')
 
 ip_ids = tokenizer.encode('Your summary sentence')
