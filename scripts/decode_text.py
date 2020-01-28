@@ -8,7 +8,6 @@ tf.random.set_seed(100)
 import time
 from hyper_parameters import h_parms
 from configuration import config
-from metrics import optimizer, loss_function, label_smoothing, get_loss_and_accuracy, tf_write_summary, monitor_run
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
 from create_tokenizer_inference import tokenizer, model
@@ -71,32 +70,35 @@ def create_padding_mask(seq):
     # to the attention logits.
     return seq[:, tf.newaxis, tf.newaxis, :]  # (batch_size, 1, 1, seq_len)
 
-def top_k_sampling(logits, k=25, temperature=0.9):
-    'k must be greater than 0'
+def sampling(logits):
     logits = tf.squeeze(logits, 0)
+    sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
+    return sample
+
+def top_k_sampling(logits, k=25):
+    'k must be greater than 0'
     values, _ = tf.nn.top_k(logits, k=k)
     min_value = tf.reduce_min(values)
     logits = tf.where(
         logits < min_value,
         tf.ones_like(logits, dtype=logits.dtype) * -1e10,
         logits)
-
-    logits = logits / temperature
+    logits = tf.reshape(logits, (1, -1))
     sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
     return sample
-
-def argmax(logits):
-    return tf.argmax(logits, axis=-1)
-
+  
 def nucleus_sampling(logits, p=0.9):
-    logits = tf.squeeze(logits, 0)
     sorted_logits = tf.sort(logits, direction='DESCENDING')
     sorted_indices = tf.argsort(logits, direction='DESCENDING')
     cumulative_probs = tf.cumsum(tf.nn.softmax(sorted_logits))
     t_sorted_indices_to_remove = cumulative_probs > p
     ''' Shift the indices to the right to keep also the first token above the threshold '''
     indices = tf.range(1, tf.shape(logits)[0], 1)
-    sorted_indices_to_remove = tf.scatter_nd(tf.expand_dims(indices, 1), t_sorted_indices_to_remove[:-1], logits.shape)
+    sorted_indices_to_remove = tf.scatter_nd(
+                                             tf.expand_dims(indices, 1), 
+                                             t_sorted_indices_to_remove[:-1], 
+                                             logits.shape
+                                             )
     indices_to_remove = tf.boolean_mask(sorted_indices, sorted_indices_to_remove)
     t = tf.ones(tf.shape(indices_to_remove)[0], dtype=tf.bool)
     to_remove = tf.scatter_nd(tf.expand_dims(indices_to_remove, 1), t, logits.shape)
@@ -105,20 +107,25 @@ def nucleus_sampling(logits, p=0.9):
         tf.ones_like(logits, dtype=logits.dtype) * -1e10,
         logits
     )
-    sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
-    return sample
-
-def sampling(logits, temperature=0.8):
-    logits = tf.squeeze(logits, 0)
-    logits = logits / temperature
+    logits = tf.reshape(logits, (1, -1))
     sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
     return sample
 	
-def draft_summary_greedy(inp, enc_output, look_ahead_mask, padding_mask, training=False):
+def draft_summary_sampling(
+                           inp, 
+                           enc_output, 
+                           look_ahead_mask, 
+                           padding_mask, 
+                           sampling_type='greedy', 
+                           temperature=0.9, 
+                           p=0.9, 
+                           k=25, 
+                           training=False
+                           ):
     """
     Inference call, builds a draft summary auto-regressively
     """
-
+    log.info(f"Building: 'Draft {sampling_type} decoder'")
     N = tf.shape(enc_output)[0]
     T = tf.shape(enc_output)[1]
 
@@ -133,18 +140,25 @@ def draft_summary_greedy(inp, enc_output, look_ahead_mask, padding_mask, trainin
 
         # (batch_size, i+1, vocab), (_)            
         dec_output, dec_logits_i, attention_dist = model.decoder(
-                                                    inp, 
-                                                    embeddings, 
-                                                    enc_output, 
-                                                    training, 
-                                                    look_ahead_mask, 
-                                                    padding_mask
-                                                   )
+                                                                inp, 
+                                                                embeddings, 
+                                                                enc_output, 
+                                                                training, 
+                                                                look_ahead_mask, 
+                                                                padding_mask
+                                                               )
         
 
         # (batch_size, 1, vocab)
         dec_output_i = dec_output[:, -1: ,:]
-        preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
+        if sampling_type == 'nucleus':
+          preds = tf.cast(nucleus_sampling((tf.squeeze(dec_output_i)/ temperature), p=p), tf.int32)
+        elif sampling_type == 'topk':
+          preds = tf.cast(top_k_sampling((tf.squeeze(dec_output_i)/ temperature), k=k), tf.int32)
+        elif sampling_type == 'random_sampling':
+          preds = tf.cast(sampling(tf.squeeze(dec_output_i)/ temperature), tf.int32)
+        else:
+          preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
         dec_outputs += [dec_output_i]
         dec_logits_i = dec_logits_i[:, -1:, :]
         dec_logits += [dec_logits_i]
@@ -156,20 +170,24 @@ def draft_summary_greedy(inp, enc_output, look_ahead_mask, padding_mask, trainin
     summary = tf.concat(summary, axis=1)  
     if config.copy_gen: 
       predictions = model.decoder.pointer_generator(
-                                        dec_logits,
-                                        dec_outputs, 
-                                        attention_dist, 
-                                        inp, 
-                                        tf.shape(inp)[-1], 
-                                        tf.shape(dec_outputs)[1], 
-                                        training=training
-                                        )
+                                                    dec_logits,
+                                                    dec_outputs, 
+                                                    attention_dist, 
+                                                    inp, 
+                                                    tf.shape(inp)[-1], 
+                                                    tf.shape(dec_outputs)[1], 
+                                                    training=training
+                                                    )
+      
       summary = tf.cast(tf.argmax(predictions, axis=-1), dtype=tf.int32)
       print(f' pointer_gen_summary_shape {tf.shape(summary)}')
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
     return tf.squeeze(summary,axis=0) , attention_dist
 
-def beam_search_draft_decoder(input_ids, beam_size):
+def draft_summary_beam_search(input_ids, beam_size):
+
+    log.info(f"Building: 'Draft beam search decoder'")
+
     batch = tf.shape(input_ids)[0]
     end = [SEP_ID]
     # (batch_size, seq_len, d_bert)
@@ -182,12 +200,19 @@ def beam_search_draft_decoder(input_ids, beam_size):
     def beam_search_decoder(output):
       _, _, dec_padding_mask = create_masks(input_ids, output)    
       embeddings = model.embedding(output)
-      predictions, dec_op, atte_weights = model.decoder(input_ids, embeddings, enc_output, False, None, dec_padding_mask)
+      predictions, dec_op, attention_weights = model.decoder(
+                                                            input_ids, 
+                                                            embeddings, 
+                                                            enc_output, 
+                                                            False, 
+                                                            None, 
+                                                            dec_padding_mask
+                                                            )
       if config.copy_gen:
         predictions = model.decoder.pointer_generator(
                                                       dec_op, 
                                                       predictions,
-                                                      atte_weights,
+                                                      attention_weights,
                                                       input_ids,
                                                       tf.shape(input_ids)[1], 
                                                       tf.shape(output)[-1], 
@@ -196,18 +221,27 @@ def beam_search_draft_decoder(input_ids, beam_size):
       # (batch_size, 1, target_vocab_size)
       return (predictions[:,-1:,:])
     return (beam_search(
-                    beam_search_decoder, 
-                    dec_input, 
-                    beam_size, 
-                    config.summ_length, 
-                    config.input_vocab_size, 
-                    h_parms.length_penalty, 
-                    stop_early=False, 
-                    eos_id=[end]
-                    ),
-            enc_output_)
+                        beam_search_decoder, 
+                        dec_input, 
+                        beam_size, 
+                        config.summ_length, 
+                        config.input_vocab_size, 
+                        h_parms.length_penalty, 
+                        stop_early=False, 
+                        eos_id=[end]
+                        ),
+                        enc_output_
+            )
 
-def refined_summary_greedy(inp, enc_output, draft_summary, padding_mask, training=False):
+def refined_summary_sampling(inp, 
+                           enc_output, 
+                           draft_summary, 
+                           padding_mask, 
+                           sampling_type='greedy', 
+                           temperature=0.9, 
+                           p=0.9, 
+                           k=25,
+                           training=False):
         """
         Inference call, builds a refined summary
         
@@ -215,9 +249,9 @@ def refined_summary_greedy(inp, enc_output, draft_summary, padding_mask, trainin
         then feeds the draft to BERT to generate context vectors.
         """
         
-        #logging.info("Building: 'Greedy Refined Summary'")
+        log.info(f"Building: 'Refined {sampling_type} decoder'")
+
         refined_summary = tf.expand_dims(draft_summary,0)
-        
         dec_outputs = []
         dec_logits = []
         for i in tqdm(range(1, config.summ_length)):
@@ -230,89 +264,119 @@ def refined_summary_greedy(inp, enc_output, draft_summary, padding_mask, trainin
             
             # (batch_size, seq_len, d_bert), (_)
             dec_output, dec_logits_i, attention_dist = model.decoder(
-                                                        inp,
-                                                        context_vectors,
-                                                        enc_output,
-                                                        training=training,
-                                                        look_ahead_mask=None,
-                                                        padding_mask=padding_mask
-                                                      )
+                                                                    inp,
+                                                                    context_vectors,
+                                                                    enc_output,
+                                                                    training=training,
+                                                                    look_ahead_mask=None,
+                                                                    padding_mask=padding_mask
+                                                                  )
             
             # (batch_size, 1, vocab_len)
             dec_output_i = dec_output[:, i:i+1 ,:]
-            preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
+            if sampling_type == 'nucleus':
+              preds = tf.cast(nucleus_sampling((tf.squeeze(dec_output_i)/ temperature), p=p), tf.int32)
+            elif sampling_type == 'topk':
+              preds = tf.cast(top_k_sampling((tf.squeeze(dec_output_i)/ temperature), k=k), tf.int32)
+            elif sampling_type == 'random_sampling':
+              preds = tf.cast(sampling(tf.squeeze(dec_output_i)/ temperature), tf.int32)
+            else:
+              preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
             dec_outputs += [dec_output_i]
             dec_logits_i = dec_logits_i[:, i:i+1, :]
             dec_logits += [dec_logits_i]
-            #dec_logits_i = tf.concat(dec_logits_i, axis=1)
-            #dec_logits_i = tf.concat(dec_logits_i, axis=1)
+            
             refined_summary = with_column(refined_summary, i, preds)
             attention_dist = tf.concat(attention_dist, axis=2)
         dec_outputs = tf.concat(dec_outputs, axis=1)
         dec_logits = tf.concat(dec_logits, axis=1)
-        print(f'dec_logits {tf.shape(dec_logits)}')
-        print(f'dec_outputs {tf.shape(dec_outputs)}')
-        print(f'embeddings {context_vectors.shape}')
-        print(f'attention_dist {tf.shape(attention_dist)}')
-        print(f' decoder_refined_summary_shape {tf.shape(refined_summary)}')
         if config.copy_gen: 
           predictions = model.decoder.pointer_generator(
-                                            dec_logits,
-                                            dec_outputs, 
-                                            attention_dist[:, :, :-1, :], 
-                                            inp, 
-                                            tf.shape(inp)[-1], 
-                                            tf.shape(dec_outputs)[1], 
-                                            training=training
-                                            )
+                                                        dec_logits,
+                                                        dec_outputs, 
+                                                        attention_dist[:, :, :-1, :], 
+                                                        inp, 
+                                                        tf.shape(inp)[-1], 
+                                                        tf.shape(dec_outputs)[1], 
+                                                        training=training
+                                                        )
           refined_summary = tf.cast(tf.argmax(predictions, axis=-1), dtype=tf.int32)
         # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)        
         return tf.squeeze(refined_summary, axis=0), attention_dist
 
-def predict_greedy(inp):
+def predict_using_sampling(
+                           inp, 
+                           draft_decoder_sampling_type='topk',
+                           refine_decoder_sampling_type='topk', 
+                           temperature=0.9, 
+                           p=0.9, 
+                           k=25):
   
   dec_padding_mask = create_padding_mask(inp)
   
   # (batch_size, seq_len, d_bert)
   enc_output = model.bert_model(inp)[0]
   # (batch_size, seq_len, vocab_len), (_)
-  preds_draft_summary, draft_attention_dist = draft_summary_greedy( 
-                                                                    inp,
-                                                                    enc_output=enc_output,
-                                                                    look_ahead_mask=None,
-                                                                    padding_mask=dec_padding_mask
-                                                                  )
+  preds_draft_summary, draft_attention_dist = draft_summary_sampling( 
+                                                                      ip_ids,
+                                                                      enc_output=enc_output,
+                                                                      look_ahead_mask=None,
+                                                                      padding_mask=dec_padding_mask,
+                                                                      sampling_type=draft_decoder_sampling_type,
+                                                                      temperature=temperature,
+                                                                      p=p, 
+                                                                      k=k,
+                                                                    )
   # (batch_size, seq_len, vocab_len), ()
-  preds_refined_summary, refined_attention_dist = refined_summary_greedy(
-                                                                        inp,
-                                                                        enc_output=enc_output,
-                                                                        padding_mask=dec_padding_mask,
-                                                                        draft_summary=preds_draft_summary
-                                                                        )
+  preds_refined_summary, refined_attention_dist = refined_summary_sampling(
+                                                                            ip_ids,
+                                                                            enc_output=enc_output,
+                                                                            padding_mask=dec_padding_mask,
+                                                                            draft_summary=preds_draft_summary,
+                                                                            sampling_type=refine_decoder_sampling_type, 
+                                                                            temperature=temperature, 
+                                                                            p=p, 
+                                                                            k=k,
+                                                                            )
 
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
-def predict_bs(inp, beam_size):
+def predict_using_beam_search(
+                              inp, 
+                              beam_size=3, 
+                              refine_decoder_sampling_type='nucleus', 
+                              temperature=0.9, 
+                              p=0.9, 
+                              k=25):
   
   dec_padding_mask = create_padding_mask(inp)
   translated_output_temp, enc_output = beam_search_draft_decoder(inp, beam_size)
-  preds_draft_summary = translated_output_temp[0][:,0,:] # Take the sequence with high score
-  #print(preds_draft_summary)
-  preds_refined_summary, refined_attention_dist = refined_summary_greedy(
-                                                                        inp,
+  # Take the sequence with high score (the last one)
+  preds_draft_summary = translated_output_temp[0][:,0,:] 
+  preds_refined_summary, refined_attention_dist = refined_summary_sampling(
+                                                                        ip_ids,
                                                                         enc_output=enc_output,
                                                                         padding_mask=dec_padding_mask,
-                                                                        draft_summary=tf.squeeze(preds_draft_summary, axis=0)
+                                                                        draft_summary=tf.squeeze(
+                                                                                                preds_draft_summary, 
+                                                                                                axis=0
+                                                                                                ),
+                                                                        sampling_type=refine_decoder_sampling_type, 
+                                                                        temperature=temperature, 
+                                                                        p=p, 
+                                                                        k=k,
                                                                         )
 
   return preds_draft_summary, preds_refined_summary, refined_attention_dist
 
 ''' 
 Set the latest checkpoint and run the below piece of code for inference. 
+
 ckpt = tf.train.Checkpoint(
                            model=model,
                            optimizer=optimizer
                           )
+
 ckpt.restore('/content/drive/My Drive/Text_summarization/BERT_text_summarisation/cnn_checkpoints/ckpt-35')
 
 ip_ids = tokenizer.encode('Your summary sentence')
