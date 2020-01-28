@@ -303,18 +303,5 @@ class Decoder(tf.keras.layers.Layer):
     
     # (batch_size, tar_seq_len, target_vocab_size)
     predictions_d = self.final_layer(tf.cast(x, tf.float32)) 
-    if config.copy_gen: 
-      predictions = self.pointer_generator(
-                                        tf.cast(x, tf.float32),  #(batch_size, tar_seq_len, d_model)
-                                        predictions_d, 
-                                        block2_attention_weights, 
-                                        inp, 
-                                        tf.shape(inp)[1], 
-                                        seq_len, 
-                                        training=training
-                                        )
-      predictions_d = predictions
     # x (batch_size, target_seq_len, target_vocab_size)
     return predictions_d, tf.cast(x, tf.float32), block2_attention_weights
-
-
