@@ -169,6 +169,33 @@ def draft_summary_greedy(inp, enc_output, look_ahead_mask, padding_mask, trainin
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
     return tf.squeeze(summary,axis=0) , attention_dist
 
+def beam_search_draft_decoder(input_ids, beam_size):
+    batch = tf.shape(input_ids)[0]
+    end = [SEP_ID]
+    # (batch_size, seq_len, d_bert)
+    enc_output_ = model.bert_model(input_ids)[0]
+    enc_output = tf.tile(enc_output_, multiples=[beam_size,1, 1])
+    input_ids = tf.tile(input_ids, multiples=[beam_size, 1])
+    # (batch_size, 1, 1, seq_len), (_), (batch_size, 1, 1, seq_len)
+    dec_input = tf.convert_to_tensor([CLS_ID] * batch)
+    output = tf.expand_dims(dec_input, 0)
+    def beam_search_decoder(output):
+      _, _, dec_padding_mask = create_masks(input_ids, output)    
+      embeddings = model.embedding(output)
+      dec_output, _ = model.decoder(input_ids, embeddings, enc_output, False, None, dec_padding_mask)
+      # (batch_size, 1, target_vocab_size)
+      return (dec_output[:,-1:,:])
+    return (beam_search(
+                    beam_search_decoder, 
+                    dec_input, 
+                    beam_size, 
+                    config.summ_length, 
+                    config.input_vocab_size, 
+                    h_parms.length_penalty, 
+                    stop_early=False, 
+                    eos_id=[end]
+                    ),
+            enc_output_)
 
 def refined_summary_greedy(inp, enc_output, draft_summary, padding_mask, training=False):
         """
@@ -255,6 +282,20 @@ def predict_greedy(inp):
 
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
+def predict_bs(inp, beam_size):
+  
+  dec_padding_mask = create_padding_mask(inp)
+  translated_output_temp, enc_output = beam_search_draft_decoder(inp, beam_size)
+  preds_draft_summary = translated_output_temp[0][:,0,:] # Take the sequence with high score
+  #print(preds_draft_summary)
+  preds_refined_summary, refined_attention_dist = refined_summary_greedy(
+                                                                        inp,
+                                                                        enc_output=enc_output,
+                                                                        padding_mask=dec_padding_mask,
+                                                                        draft_summary=tf.squeeze(preds_draft_summary, axis=0)
+                                                                        )
+
+  return preds_draft_summary, preds_refined_summary, refined_attention_dist
 
 ''' 
 Set the latest checkpoint and run the below piece of code for inference. 
