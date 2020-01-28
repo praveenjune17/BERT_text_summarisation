@@ -182,9 +182,19 @@ def beam_search_draft_decoder(input_ids, beam_size):
     def beam_search_decoder(output):
       _, _, dec_padding_mask = create_masks(input_ids, output)    
       embeddings = model.embedding(output)
-      dec_output, _ = model.decoder(input_ids, embeddings, enc_output, False, None, dec_padding_mask)
+      predictions, dec_op, atte_weights = model.decoder(input_ids, embeddings, enc_output, False, None, dec_padding_mask)
+      if config.copy_gen:
+        predictions = model.decoder.pointer_generator(
+                                                      dec_op, 
+                                                      predictions,
+                                                      atte_weights,
+                                                      input_ids,
+                                                      tf.shape(input_ids)[1], 
+                                                      tf.shape(output)[-1], 
+                                                      False
+                                                     )
       # (batch_size, 1, target_vocab_size)
-      return (dec_output[:,-1:,:])
+      return (predictions[:,-1:,:])
     return (beam_search(
                     beam_search_decoder, 
                     dec_input, 
