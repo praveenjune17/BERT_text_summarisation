@@ -180,7 +180,6 @@ def draft_summary_sampling(
                                                     )
       
       summary = tf.cast(tf.argmax(predictions, axis=-1), dtype=tf.int32)
-      print(f' pointer_gen_summary_shape {tf.shape(summary)}')
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
     return tf.squeeze(summary,axis=0) , attention_dist
 
@@ -318,7 +317,7 @@ def predict_using_sampling(
   enc_output = model.bert_model(inp)[0]
   # (batch_size, seq_len, vocab_len), (_)
   preds_draft_summary, draft_attention_dist = draft_summary_sampling( 
-                                                                      ip_ids,
+                                                                      inp,
                                                                       enc_output=enc_output,
                                                                       look_ahead_mask=None,
                                                                       padding_mask=dec_padding_mask,
@@ -329,7 +328,7 @@ def predict_using_sampling(
                                                                     )
   # (batch_size, seq_len, vocab_len), ()
   preds_refined_summary, refined_attention_dist = refined_summary_sampling(
-                                                                            ip_ids,
+                                                                            inp,
                                                                             enc_output=enc_output,
                                                                             padding_mask=dec_padding_mask,
                                                                             draft_summary=preds_draft_summary,
@@ -350,11 +349,11 @@ def predict_using_beam_search(
                               k=25):
   
   dec_padding_mask = create_padding_mask(inp)
-  translated_output_temp, enc_output = beam_search_draft_decoder(inp, beam_size)
+  translated_output_temp, enc_output = draft_summary_beam_search(inp, beam_size)
   # Take the sequence with high score (the last one)
   preds_draft_summary = translated_output_temp[0][:,0,:] 
   preds_refined_summary, refined_attention_dist = refined_summary_sampling(
-                                                                        ip_ids,
+                                                                        inp,
                                                                         enc_output=enc_output,
                                                                         padding_mask=dec_padding_mask,
                                                                         draft_summary=tf.squeeze(
