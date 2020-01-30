@@ -14,7 +14,7 @@ from create_tokenizer_inference import tokenizer, model
 from local_tf_ops import *
 from beam_search import beam_search
 from transformer import create_masks
-from tqdm import tqdm
+#from tqdm import tqdm
 
 UNK_ID = 100
 CLS_ID = 101
@@ -110,7 +110,7 @@ def nucleus_sampling(logits, p=0.9):
     logits = tf.reshape(logits, (1, -1))
     sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
     return sample
-	
+    
 def draft_summary_sampling(
                            inp, 
                            enc_output, 
@@ -133,7 +133,7 @@ def draft_summary_sampling(
     dec_input = tf.ones([N, 1], dtype=tf.int32) * CLS_ID
     summary, dec_outputs, dec_logits, attention_dists = [], [], [], []
     summary += [dec_input]
-    for i in tqdm(range(0, config.summ_length)):
+    for i in (range(0, config.summ_length)):
         _, _, dec_padding_mask = create_masks(inp, dec_input)
         # (batch_size, i+1, d_bert)
         embeddings = model.embedding(dec_input)    
@@ -240,6 +240,7 @@ def refined_summary_sampling(inp,
                            temperature=0.9, 
                            p=0.9, 
                            k=25,
+                           beam_search=False,
                            training=False):
         """
         Inference call, builds a refined summary
@@ -249,18 +250,17 @@ def refined_summary_sampling(inp,
         """
         
         log.info(f"Building: 'Refined {sampling_type} decoder'")
-
+        N = tf.shape(enc_output)[0]
         refined_summary = tf.expand_dims(draft_summary,0)
         dec_outputs = []
         dec_logits = []
-        for i in tqdm(range(1, config.summ_length)):
+        attention_dists = []
+        for i in (range(1, config.summ_length)):
             
             # (batch_size, seq_len)
             refined_summary_ = mask_timestamp(refined_summary, i, MASK_ID)
-            
             # (batch_size, seq_len, d_bert)
             context_vectors = model.bert_model(refined_summary_)[0]
-            
             # (batch_size, seq_len, d_bert), (_)
             dec_output, dec_logits_i, attention_dist = model.decoder(
                                                                     inp,
@@ -286,14 +286,20 @@ def refined_summary_sampling(inp,
             dec_logits += [dec_logits_i]
             
             refined_summary = with_column(refined_summary, i, preds)
-            attention_dist = tf.concat(attention_dist, axis=2)
-        dec_outputs = tf.concat(dec_outputs, axis=1)
-        dec_logits = tf.concat(dec_logits, axis=1)
+            attention_dists += [attention_dist[:, i:i+1, :]]
+        cls_concat_dec_outputs = (tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.target_vocab_size), axis=0), [N, 1, 1]))
+        cls_concat_dec_logits = (tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.d_model), axis=0), [N, 1, 1]))
+        dec_outputs = tf.reshape(dec_outputs, (1, -1, config.target_vocab_size))
+        dec_logits = tf.reshape(dec_logits, (1, -1, config.d_model))
+        attention_dists = tf.reshape(attention_dists, (1, -1, config.doc_length))
+        dec_outputs = tf.concat([cls_concat_dec_outputs, dec_outputs], axis=1)
+        dec_logits = tf.concat([cls_concat_dec_logits, dec_logits], axis=1)
+        
         if config.copy_gen: 
           predictions = model.decoder.pointer_generator(
                                                         dec_logits,
                                                         dec_outputs, 
-                                                        attention_dist[:, :, :-1, :], 
+                                                        attention_dists, 
                                                         inp, 
                                                         tf.shape(inp)[-1], 
                                                         tf.shape(dec_outputs)[1], 
@@ -336,6 +342,7 @@ def predict_using_sampling(
                                                                             temperature=temperature, 
                                                                             p=p, 
                                                                             k=k,
+                                                                            beam_search=False
                                                                             )
 
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
@@ -364,6 +371,7 @@ def predict_using_beam_search(
                                                                         temperature=temperature, 
                                                                         p=p, 
                                                                         k=k,
+                                                                        beam_search=True
                                                                         )
 
   return preds_draft_summary, preds_refined_summary, refined_attention_dist
