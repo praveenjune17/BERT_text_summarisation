@@ -291,7 +291,7 @@ class Decoder(tf.keras.layers.Layer):
       attention_weights['decoder_layer{}_block1'.format(i+1)] = block1
       attention_weights['decoder_layer{}_block2'.format(i+1)] = block2
     
-    if h_parms.mean_attention_heads:
+    if h_parms.mean_parameters_of_layers:
       # take mean of the block 2 attention heads of all the layers
       block2_attention_weights = tf.reduce_mean(
                                                 [(attention_weights[key]) for key in attention_weights.keys() if 'block2' in key], 
