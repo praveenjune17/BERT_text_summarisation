@@ -18,7 +18,8 @@ hyp = {
 	 'l2_norm':0,
 	 'learning_rate': None,          	     # change to None to set learning rate decay
 	 'length_penalty' : 1,                       # Beam search hyps . Used only during inference                                                 
-	 'mean_attention_heads':True,                # if False then the attention weight of the last head will be used
+	 'mean_attention_heads':True,                # if False then the attention parameters of the last head will be used
+	 'mean_parameters_of_layers':True,           # if False then the attention parameters of the last layer will be used
 	 }                                    
 
 h_parms = Bunch(hyp)
