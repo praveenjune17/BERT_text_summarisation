@@ -2,10 +2,9 @@
 #                  b)https://github.com/raufer/bert-summarization/tree/master/models
 import tensorflow as tf
 tf.random.set_seed(100)
-
 import numpy as np
-tf.random.set_seed(100)
 import time
+import tensorflow_addons as tfa
 from hyper_parameters import h_parms
 from configuration import config
 from input_path import file_path
@@ -27,9 +26,6 @@ def with_column(x, i, column):
     x :: (N, T)
     return :: (N, T)
     """
-
-    N, T = tf.shape(x)[0], tf.shape(x)[1]
-
     left = x[:, :i]
     right = x[:, i+1:]
         
@@ -174,9 +170,7 @@ def draft_summary_sampling(
         dec_logits += [dec_logits_i]
         summary += [preds]
         dec_input = with_column(dec_input, i+1, preds)
-        attention_dist = tf.concat(attention_dist, axis=2)
-    dec_outputs = tf.concat(dec_outputs, axis=1)
-    dec_logits = tf.concat(dec_logits, axis=1)
+        #attention_dist = tf.concat(attention_dist, axis=2)
     summary = tf.concat(summary, axis=1)  
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
     return summary, attention_dist
@@ -184,14 +178,13 @@ def draft_summary_sampling(
 def draft_summary_beam_search(input_ids, enc_output, dec_padding_mask, beam_size):
 
     log.info(f"Building: 'Draft beam search decoder'")
-    input_ids = tf.tile(input_ids, multiples=[beam_size, 1])
-    enc_output = tf.tile(enc_output, multiples=[beam_size, 1, 1])
-    dec_padding_mask = tf.tile(dec_padding_mask, multiples=[beam_size, 1, 1, 1])
+    input_ids = tfa.seq2seq.tile_batch(input_ids, multiplier=beam_size)
+    enc_output = tfa.seq2seq.tile_batch(enc_output, multiplier=beam_size)
+    dec_padding_mask = tfa.seq2seq.tile_batch(dec_padding_mask, multiplier=beam_size)
     #print(f'output_before {tf.shape(output)}')
     def beam_search_decoder(output):
       # (batch_size, seq_len, d_bert)    
       embeddings = model.embedding(output)
-      print(f'output_after {tf.shape(output)}')
       predictions, dec_op, attention_weights = model.decoder(
                                                             embeddings, 
                                                             enc_output, 
@@ -201,16 +194,16 @@ def draft_summary_beam_search(input_ids, enc_output, dec_padding_mask, beam_size
                                                             )
       if config.copy_gen:
         predictions = model.decoder.pointer_generator(
-                                                      dec_op, 
-                                                      predictions,
-                                                      attention_weights,
+                                                      dec_op[:, -1:, :], 
+                                                      predictions[:, -1:, :],
+                                                      attention_weights[:, :, -1:, :],
                                                       input_ids,
                                                       tf.shape(input_ids)[1], 
-                                                      tf.shape(output)[-1], 
+                                                      tf.shape(predictions[:, -1:, :])[1], 
                                                       training=False,
                                                      )
       # (batch_size, 1, target_vocab_size)
-      return (tf.squeeze(predictions[:,-1:,:]))
+      return (predictions[:,-1:,:])
     return beam_search(
                         beam_search_decoder, 
                         [CLS_ID] * h_parms.batch_size, 
@@ -264,16 +257,6 @@ def refined_summary_sampling(inp,
                                                                     look_ahead_mask=None,
                                                                     padding_mask=padding_mask
                                                                   )
-            if config.copy_gen:
-              dec_output = model.decoder.pointer_generator(
-                                                            dec_logits_i, 
-                                                            dec_output,
-                                                            attention_dist,
-                                                            inp,
-                                                            tf.shape(inp)[1], 
-                                                            tf.shape(dec_output)[1], 
-                                                            training=False,
-                                                           )
             
             # (batch_size, 1, vocab_len)
             dec_output_i = dec_output[:, i:i+1 ,:]
@@ -285,22 +268,7 @@ def refined_summary_sampling(inp,
               preds = tf.cast(sampling(tf.squeeze(dec_output_i)/ temperature), tf.int32)
             else:
               preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
-            dec_outputs += [dec_output_i]
-            dec_logits_i = dec_logits_i[:, i:i+1, :]
-            dec_logits += [dec_logits_i]
-            
             refined_summary = with_column(refined_summary, i, preds)
-            attention_dists += [attention_dist[:, :, i:i+1 , :]]
-        cls_concat_dec_outputs = (tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.target_vocab_size), axis=0), [batch, 1, 1]))
-        cls_concat_dec_logits = (tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.d_model), axis=0), [batch, 1, 1]))
-        #cls_concat_dec_attn = (tf.tile(tf.expand_dims(tf.one_hot([CLS_ID], config.doc_length), axis=0), [batch, 1, 1, 1]))
-        cls_concat_dec_attn = tf.tile(tf.one_hot([0], config.doc_length)[:,tf.newaxis,tf.newaxis,:], [batch, config.num_heads, 1, 1])
-        dec_outputs = tf.reshape(dec_outputs, (batch, -1, config.target_vocab_size))
-        dec_logits = tf.reshape(dec_logits, (batch, -1, config.d_model))
-        attention_dists = tf.reshape(attention_dists, (batch, config.num_heads, -1, config.doc_length))
-        dec_outputs = tf.concat([cls_concat_dec_outputs, dec_outputs], axis=1)
-        dec_logits = tf.concat([cls_concat_dec_logits, dec_logits], axis=1)
-        attention_dists = tf.concat([cls_concat_dec_attn, attention_dists], axis=2)
         # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)        
         return refined_summary, attention_dist
 
@@ -340,7 +308,8 @@ def predict_using_sampling(
                                                                             beam_search=False
                                                                             )
 
-  return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
+
+  return preds_draft_summary, draft_attention_dist, preds_refined_summary[:, 1:], refined_attention_dist
 
 def predict_using_beam_search(
                               inp, 
@@ -370,8 +339,8 @@ def predict_using_beam_search(
                                                                         k=k,
                                                                         beam_search=True
                                                                         )
-
-  return preds_draft_summary, preds_refined_summary, refined_attention_dist
+  print(f'preds_refined_summary shape {tf.shape(preds_refined_summary[:, 1:])}')
+  return preds_draft_summary, preds_refined_summary[:, 1:], refined_attention_dist
 
 ''' 
 Set the latest checkpoint and run the below piece of code for inference. 
