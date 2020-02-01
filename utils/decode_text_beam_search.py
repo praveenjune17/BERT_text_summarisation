@@ -140,13 +140,23 @@ def draft_summary_sampling(
 
         # (batch_size, i+1, vocab), (_)            
         dec_output, dec_logits_i, attention_dist = model.decoder(
-                                                                inp, 
                                                                 embeddings, 
                                                                 enc_output, 
                                                                 training, 
                                                                 look_ahead_mask, 
                                                                 padding_mask
                                                                )
+
+        if config.copy_gen:
+          dec_output = model.decoder.pointer_generator(
+                                                        dec_logits_i, 
+                                                        dec_output,
+                                                        attention_dist,
+                                                        inp,
+                                                        tf.shape(inp)[1], 
+                                                        tf.shape(dec_output)[1], 
+                                                        training=False,
+                                                       )
         
 
         # (batch_size, 1, vocab)
@@ -168,20 +178,8 @@ def draft_summary_sampling(
     dec_outputs = tf.concat(dec_outputs, axis=1)
     dec_logits = tf.concat(dec_logits, axis=1)
     summary = tf.concat(summary, axis=1)  
-    if config.copy_gen: 
-      predictions = model.decoder.pointer_generator(
-                                                    dec_logits,
-                                                    dec_outputs, 
-                                                    attention_dist, 
-                                                    inp, 
-                                                    tf.shape(inp)[-1], 
-                                                    tf.shape(dec_outputs)[1], 
-                                                    training=training,
-                                                    )
-      
-      summary = tf.cast(tf.argmax(predictions, axis=-1), dtype=tf.int32)
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
-    return tf.squeeze(summary,axis=0) , attention_dist
+    return summary, attention_dist
 
 def draft_summary_beam_search(input_ids, enc_output, dec_padding_mask, beam_size):
 
@@ -266,6 +264,16 @@ def refined_summary_sampling(inp,
                                                                     look_ahead_mask=None,
                                                                     padding_mask=padding_mask
                                                                   )
+            if config.copy_gen:
+              dec_output = model.decoder.pointer_generator(
+                                                            dec_logits_i, 
+                                                            dec_output,
+                                                            attention_dist,
+                                                            inp,
+                                                            tf.shape(inp)[1], 
+                                                            tf.shape(dec_output)[1], 
+                                                            training=False,
+                                                           )
             
             # (batch_size, 1, vocab_len)
             dec_output_i = dec_output[:, i:i+1 ,:]
@@ -293,17 +301,6 @@ def refined_summary_sampling(inp,
         dec_outputs = tf.concat([cls_concat_dec_outputs, dec_outputs], axis=1)
         dec_logits = tf.concat([cls_concat_dec_logits, dec_logits], axis=1)
         attention_dists = tf.concat([cls_concat_dec_attn, attention_dists], axis=2)
-        if config.copy_gen: 
-          predictions = model.decoder.pointer_generator(
-                                                        dec_logits,
-                                                        dec_outputs, 
-                                                        attention_dists,
-                                                        inp, 
-                                                        tf.shape(inp)[-1], 
-                                                        tf.shape(dec_outputs)[1], 
-                                                        training=training
-                                                        )
-          refined_summary = tf.cast(tf.argmax(predictions, axis=-1), dtype=tf.int32)
         # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)        
         return refined_summary, attention_dist
 
@@ -378,17 +375,13 @@ def predict_using_beam_search(
 
 ''' 
 Set the latest checkpoint and run the below piece of code for inference. 
-
 ckpt = tf.train.Checkpoint(
                            model=model,
                            optimizer=optimizer
                           )
-
 ckpt.restore('/content/drive/My Drive/Text_summarization/BERT_text_summarisation/cnn_checkpoints/ckpt-35')
-
 ip_ids = tokenizer.encode('Your summary sentence')
 preds_draft_summary, draft_attention_dist, preds_refined_summary, _ = predict(ip_ids)
 preds_refined_summary = (tokenizer.decode([i for i in preds_refined_summary if i not in [CLS_ID, SEP_ID, 0]]))
 print(f'the predicted_refined_greedy auto regressive --> {preds_refined_summary if preds_refined_summary else "EMPTY"}')
-
 '''
