@@ -230,10 +230,12 @@ class Pointer_Generator(tf.keras.layers.Layer):
     vocab_dist = p_gen * vocab_dist_ 
     # attention_dist (batch_size, tar_seq_len, inp_seq_len)
     # attention_weights is 4D so taking mean of the second dimension(i.e num_heads)
+    
     if h_parms.mean_attention_heads:
       attention_weights_ = tf.reduce_mean(attention_weights, axis=1)
     else:
       attention_weights_ = attention_weights[:, -1, :, :]
+#    attention_dist = tf.math.softmax(tf.squeeze(attention_weights[:, -1, :, :], axis=1), axis=-1)
     attention_dist = tf.math.softmax(attention_weights_, axis=-1)
     # updates (batch_size, tar_seq_len, inp_seq_len)
     updates = (1 - p_gen) * attention_dist
@@ -276,7 +278,7 @@ class Decoder(tf.keras.layers.Layer):
     if config.copy_gen:
       self.pointer_generator   = Pointer_Generator()
     
-  def call(self, inp, x, enc_output, training, 
+  def call(self, x, enc_output, training, 
            look_ahead_mask, padding_mask):
     seq_len = tf.shape(x)[1]
     attention_weights = {}
@@ -300,8 +302,6 @@ class Decoder(tf.keras.layers.Layer):
     else:
       # take the attention weights of the final layer 
       block2_attention_weights = attention_weights[f'decoder_layer{self.num_layers}_block2']
-    
     # (batch_size, tar_seq_len, target_vocab_size)
     predictions_d = self.final_layer(tf.cast(x, tf.float32)) 
-    # x (batch_size, target_seq_len, target_vocab_size)
     return predictions_d, tf.cast(x, tf.float32), block2_attention_weights
