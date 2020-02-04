@@ -59,12 +59,6 @@ def encode(sent_1, sent_2, tokenizer, input_seq_len, output_seq_len):
     if len(input_ids_2) > (output_seq_len + 1) - 2:
         input_ids_2 = input_ids_2[0:((output_seq_len + 1) - 2)]
         
-    # tokens_1 = ["[CLS]"] + tokens_1 + ["[SEP]"]
-    # tokens_2 = ["[CLS]"] + tokens_2 + ["[SEP]"]
-    
-    #input_ids_1 = tokenizer.convert_tokens_to_ids(tokens_1)
-    #input_ids_2 = tokenizer.convert_tokens_to_ids(tokens_2)
-    
     input_mask_1 = [1] * len(input_ids_1)
     input_mask_2 = [1] * len(input_ids_2)
 
@@ -135,7 +129,13 @@ def map_batch_shuffle(dataset, buffer_size, split,
 def create_train_data(num_samples_to_train = config.num_examples_to_train, shuffle=True, filter_off=False):
 
     if config.use_tfds:
-        examples, metadata = tfds.load(config.tfds_name, with_info=True, as_supervised=True, data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset')
+        examples, metadata = tfds.load(
+                                       config.tfds_name, 
+                                       with_info=True,
+                                       as_supervised=True, 
+                                       data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset',
+                                       builder_kwargs={"version": "2.0.0"}
+                                      )
         other_ds = 'validation' if 'validation' in examples else 'test'
         train_examples = examples['train']
         valid_examples = examples[other_ds]
