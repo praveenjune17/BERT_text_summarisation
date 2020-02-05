@@ -1,7 +1,0 @@
-Addtional functionalities
-    a) beam_search while calculating metrics
-	b) convert metrics like BERT score, ROUGE score to Keras metrics
-	c) Generalize monitior metric, as of now only 'Valid loss' is being used
-	d) Gradient accumulation   (low priority)
-	e) Convert tf.py_funcitons to tf.functions 
-	f) run the script to check karpathy's suggestions
