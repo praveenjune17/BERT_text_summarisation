@@ -9,11 +9,12 @@ Apart from the existing functionalities in the adapted code added few features l
   *)Added Copy mechanism to the decoder  
   *)Added topk, nucleus decoders  
   *)Used Huggingface Transformers library to extract BERT embeddings  
-  *)Mixed precision policy enabled training
-  *)Migrated the adapted code from Tensorflow 1 to 2 
+  *)Mixed precision policy enabled training  
+  *)Used BERT score for validation  
+  *)Migrated the adapted code from Tensorflow 1 to 2  
   
 
 Instructions to Train the model  
-  a) Run train_bert_summarizer_mixed_precision.py if you have GPU with compute compatibility >= 7.5 else use train_bert_summarizer.py.
+  *) Run train_bert_summarizer_mixed_precision.py if you have GPU with compute compatibility >= 7.5 else use train_bert_summarizer.py.
   
 *) Google colab Demo available [here](https://github.com/praveenjune17/BERT_text_summarisation/blob/master/Text_summarization_demo_using_BERT.ipynb)
