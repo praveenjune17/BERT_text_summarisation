@@ -13,7 +13,6 @@ from create_tokenizer_inference import tokenizer, model
 from local_tf_ops import *
 from beam_search import beam_search
 from transformer import create_masks
-#from tqdm import tqdm
 
 UNK_ID = 100
 CLS_ID = 101
@@ -94,9 +93,6 @@ def nucleus_sampling(logits, p=0.9):
                                              t_sorted_indices_to_remove[:-1], 
                                              logits.shape
                                              )
-    # indices_to_remove = tf.boolean_mask(sorted_indices, sorted_indices_to_remove)
-    # t = tf.ones(tf.shape(indices_to_remove)[0], dtype=tf.bool)
-    # to_remove = tf.scatter_nd(indices_to_remove, t, logits.shape)
     logits = tf.where(
         sorted_indices_to_remove,
         tf.ones_like(logits, dtype=logits.dtype) * -1e10,
@@ -250,7 +246,6 @@ def refined_summary_sampling(inp,
                            temperature=0.9, 
                            p=0.9, 
                            k=25,
-                           beam_search=False,
                            training=False):
         """
         Inference call, builds a refined summary
@@ -263,7 +258,6 @@ def refined_summary_sampling(inp,
         N = tf.shape(enc_output)[0]
         refined_summary = draft_summary
         batch = tf.shape(draft_summary)[0]
-        print(f'draft_summary {tf.shape(draft_summary)}')
         dec_outputs = []
         dec_logits = []
         attention_dists = []
@@ -297,7 +291,7 @@ def refined_summary_sampling(inp,
             else:
               preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
             refined_summary = with_column(refined_summary, i, preds)
-        # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)        
+        # (batch_size, seq_len, vocab_len), (_)        
         return refined_summary, attention_dist
 
 def predict_using_sampling(
@@ -332,8 +326,7 @@ def predict_using_sampling(
                                                                             sampling_type=refine_decoder_sampling_type, 
                                                                             temperature=temperature, 
                                                                             p=p, 
-                                                                            k=k,
-                                                                            beam_search=False
+                                                                            k=k
                                                                             )
 
 
@@ -348,14 +341,14 @@ def predict_using_beam_search(
                               k=25):
   
   dec_padding_mask = create_padding_mask(inp)
-  enc_output = model.bert_model(inp)[0]
   # (batch_size, seq_len, d_bert)
+  enc_output = model.bert_model(inp)[0]
+  
   #[batch_size*beam_size, input_Seq_len, d_bert]
   translated_output_temp = draft_summary_beam_search(inp, enc_output, dec_padding_mask, beam_size)
   # Take the sequence with high score (the last one)
   preds_draft_summary = translated_output_temp[0][:,0,:] 
   
-  #print(f'preds_draft_summary {preds_draft_summary}')
   preds_refined_summary, refined_attention_dist = refined_summary_sampling(
                                                                         inp,
                                                                         enc_output=enc_output,
@@ -364,21 +357,7 @@ def predict_using_beam_search(
                                                                         sampling_type=refine_decoder_sampling_type, 
                                                                         temperature=temperature, 
                                                                         p=p, 
-                                                                        k=k,
-                                                                        beam_search=True
+                                                                        k=k
                                                                         )
-  print(f'preds_refined_summary shape {tf.shape(preds_refined_summary[:, 1:])}')
-  return preds_draft_summary, preds_refined_summary[:, 1:], refined_attention_dist
+  return preds_draft_summary, preds_refined_summary, refined_attention_dist
 
-''' 
-Set the latest checkpoint and run the below piece of code for inference. 
-ckpt = tf.train.Checkpoint(
-                           model=model,
-                           optimizer=optimizer
-                          )
-ckpt.restore('/content/drive/My Drive/Text_summarization/BERT_text_summarisation/cnn_checkpoints/ckpt-35')
-ip_ids = tokenizer.encode('Your summary sentence')
-preds_draft_summary, draft_attention_dist, preds_refined_summary, _ = predict(ip_ids)
-preds_refined_summary = (tokenizer.decode([i for i in preds_refined_summary if i not in [CLS_ID, SEP_ID, 0]]))
-print(f'the predicted_refined_greedy auto regressive --> {preds_refined_summary if preds_refined_summary else "EMPTY"}')
-'''
