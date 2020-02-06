@@ -330,7 +330,7 @@ def predict_using_sampling(
                                                                             )
 
 
-  return preds_draft_summary, draft_attention_dist, preds_refined_summary[:, 1:], refined_attention_dist
+  return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
 def predict_using_beam_search(
                               inp, 
