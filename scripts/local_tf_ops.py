@@ -79,7 +79,7 @@ def calc_validation_loss(validation_dataset,
                          validation_accuracy):
   total_val_acc_avg = tf.keras.metrics.Mean()
   total_val_loss_avg = tf.keras.metrics.Mean()
-  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(validation_dataset.take(config.valid_samples_to_eval)):
+  for (batch, (input_ids, input_mask, input_segment_ids, target_ids_, target_mask, target_segment_ids)) in enumerate(validation_dataset.take(config.valid_samples_to_eval//h_parms.validation_batch_size)):
     # calculate rouge for only the first batch
     if batch == 0:
       draft_mask = tf.math.logical_not(tf.math.equal(target_ids_[:, 1:], 0))
