@@ -165,7 +165,7 @@ def create_train_data(num_samples_to_train = config.num_examples_to_train, shuff
                                      valid_examples, 
                                      valid_buffer_size, 
                                      split='valid',
-                                     batch_size=h_parms.batch_size,
+                                     batch_size=h_parms.validation_batch_size,
                                      filter_off=filter_off
                                      )
     log.info('Train and Test tf_datasets created')
