@@ -77,8 +77,7 @@ def check_ckpt(checkpoint_path):
 # if a checkpoint exists, restore the latest checkpoint.
 ck_pt_mgr, latest_ckpt, ckpt = check_ckpt(file_path.checkpoint_path)
 
-def val_step(ckpt,
-             ckpt_manager,
+def val_step(
              input_ids,
              target_ids_,
              step, 
@@ -87,7 +86,7 @@ def val_step(ckpt,
   (draft_predictions, refine_predictions,  
    refine_attention_weights) = predict_using_beam_search(
                                                          ckpt,
-                                                         ckpt_manager,
+                                                         ck_pt_mgr,
                                                          input_ids, 
                                                          beam_size=3,
                                                          refine_decoder_sampling_type='topktopp', 
@@ -97,9 +96,9 @@ def val_step(ckpt,
                                                         )
   
   
-  validation_accuracy(target_ids_[:, :-1], refine_predictions)  
+  validation_accuracy(target_ids_[:, 1:], tf.one_hot(refine_predictions[:, 1:], depth=config.input_vocab_size))  
   if create_summ: 
-    rouge, bert = tf_write_summary(target_ids_[:, :-1], refine_predictions, step)  
+    rouge, bert = tf_write_summary(target_ids_[:, 1:], refine_predictions[:, 1:], step)  
   else: 
     rouge, bert = (1.0, 1.0)  
   return (rouge, bert)
