@@ -153,7 +153,7 @@ def infer_data_from_df(num_of_infer_examples=config.num_examples_to_infer):
                                       infer_examples, 
                                       infer_buffer_size, 
                                       split = 'infer',
-                                      batch_size=1              
+                                      batch_size=h_parms.validation_batch_size              
                                       )
     log.info('infer tf_dataset created')
     return infer_dataset
