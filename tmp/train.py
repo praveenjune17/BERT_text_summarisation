@@ -14,7 +14,7 @@ from metrics import optimizer, loss_function, label_smoothing, get_loss_and_accu
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
 from create_tokenizer import tokenizer, model
-from decode_text import predict_using_beam_search
+from decode_text import predict_using_sampling, predict_using_beam_search
 from local_tf_ops import *
 
 
@@ -77,19 +77,18 @@ def check_ckpt(checkpoint_path):
 # if a checkpoint exists, restore the latest checkpoint.
 ck_pt_mgr, latest_ckpt, ckpt = check_ckpt(file_path.checkpoint_path)
 
+
 def val_step(
              input_ids,
              target_ids_,
              step, 
              create_summ):
   validation_accuracy.reset_states()
-  (draft_predictions, refine_predictions,  
-   refine_attention_weights) = predict_using_beam_search(
-                                                         ckpt,
-                                                         ck_pt_mgr,
+  (preds_draft_summary, _,  
+   refine_predictions, _) = predict_using_sampling(ckpt,
+                                                   ck_pt_mgr,
                                                          input_ids, 
-                                                         beam_size=3,
-                                                         refine_decoder_sampling_type='topktopp', 
+                                                         refine_decoder_sampling_type='greedy', 
                                                          temperature=0.9, 
                                                          p=0.8, 
                                                          k=7
@@ -169,4 +168,4 @@ for (step, (input_ids, target_ids_)) in enumerate(train_dataset):
                          rouge_score, 
                          valid_summary_writer, 
                          step+1):
-        break  
+        break
