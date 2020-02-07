@@ -14,7 +14,7 @@ from metrics import optimizer, loss_function, label_smoothing, get_loss_and_accu
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
 from create_tokenizer import tokenizer, model
-from decode_text import predict_using_sampling, predict_using_beam_search
+#from decode_text import predict_using_sampling, predict_using_beam_search
 from local_tf_ops import *
 
 
@@ -84,15 +84,15 @@ def val_step(
              step, 
              create_summ):
   validation_accuracy.reset_states()
+  from decode_text import predict_using_sampling
   (preds_draft_summary, _,  
-   refine_predictions, _) = predict_using_sampling(ckpt,
-                                                   ck_pt_mgr,
-                                                         input_ids, 
-                                                         refine_decoder_sampling_type='greedy', 
-                                                         temperature=0.9, 
-                                                         p=0.8, 
-                                                         k=7
-                                                        )
+   refine_predictions, _) = predict_using_sampling(
+                                                    input_ids, 
+                                                    refine_decoder_sampling_type='greedy', 
+                                                    temperature=0.9, 
+                                                    p=0.8, 
+                                                    k=7
+                                                  )
   
   
   validation_accuracy(target_ids_[:, 1:], tf.one_hot(refine_predictions[:, 1:], depth=config.input_vocab_size))  
