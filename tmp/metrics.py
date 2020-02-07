@@ -64,38 +64,31 @@ def get_loss_and_accuracy():
     return(loss, accuracy)
     
 def write_summary(tar_real, predictions, step, write=config.write_summary_op):
-  r_avg_final = []
-  total_summary = []
-  for i, sub_tar_real in enumerate(tar_real):
-    sum_ref = tokenizer.convert_ids_to_tokens([i for i in sub_tar_real.numpy() if i not in [0, 101, 102]])
-    sum_hyp = tokenizer.convert_ids_to_tokens(i for i in tf.squeeze(predictions) if i not in [0, 101, 102])
-    sum_ref = convert_wordpiece_to_words(sum_ref)
-    sum_hyp = convert_wordpiece_to_words(sum_hyp)
-    # don't consider empty values for ROUGE and BERT score calculation
-    if sum_hyp and sum_ref:
-      total_summary.append((sum_ref, sum_hyp))
-  ref_sents = [ref for ref, _ in total_summary]
-  hyp_sents = [hyp for _, hyp in total_summary]
-  # returns :- dict of dicts
-  if ref_sents and hyp_sents:
-      try:  
-        rouges = rouge_all.get_scores(ref_sents , hyp_sents)
-        avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], rouge_scores['rouge-2']["f"], rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
-        _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type=config.pretrained_bert_model)
-        rouge_score =  avg_rouge_f1.astype('float64')
-        bert_f1_score =  np.mean(bert_f1.tolist(), dtype=np.float64)
-      except ValueError:
-        rouge_score = 0
-        bert_f1_score = 0
-  else:
-      rouge_score = 0
-      bert_f1_score = 0
+  ref_sents=[]
+  hyp_sents=[]
+  for tar, ref_hyp in zip(tar_real, predictions):
+      sum_ref = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(tar) if i not in [0, 101, 102]])
+      sum_hyp = tokenizer.convert_ids_to_tokens([i for i in tf.squeeze(ref_hyp) if i not in [0, 101, 102]])
+      sum_ref = convert_wordpiece_to_words(sum_ref)
+      sum_hyp = convert_wordpiece_to_words(sum_hyp)
+      ref_sents.append(sum_ref)
+      hyp_sents.append(sum_hyp)
+  try:
+    rouges = rouge_all.get_scores(ref_sents , hyp_sents)
+    avg_rouge_f1 = np.mean([np.mean([rouge_scores['rouge-1']["f"], 
+                                    rouge_scores['rouge-2']["f"], 
+                                    rouge_scores['rouge-l']["f"]]) for rouge_scores in rouges])
+    _, _, bert_f1 = b_score(ref_sents, hyp_sents, lang='en', model_type=config.pretrained_bert_model)
+    avg_bert_f1 = np.mean(bert_f1.numpy())
+  except:
+    avg_rouge_f1 = 0
+    avg_bert_f1 = 0
   
   if write and (step)%config.write_per_step == 0:
     with tf.io.gfile.GFile(file_path.summary_write_path+str(step.numpy()), 'w') as f:
-      for ref, hyp in total_summary:
+      for ref, hyp in zip(ref_sents, hyp_sents):
         f.write(ref+'\t'+hyp+'\n')
-  return (rouge_score, bert_f1_score)
+  return (avg_rouge_f1, avg_bert_f1)
   
   
 def tf_write_summary(tar_real, predictions, step):
