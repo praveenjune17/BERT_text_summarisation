@@ -9,7 +9,7 @@ from hyper_parameters import h_parms
 from configuration import config
 from input_path import file_path
 from creates import log, train_summary_writer, valid_summary_writer
-from create_tokenizer_inference import tokenizer, model
+from create_tokenizer_inference import tokenizer
 from local_tf_ops import *
 from beam_search import beam_search
 from transformer import create_masks
@@ -20,22 +20,6 @@ CLS_ID = 101
 SEP_ID = 102
 MASK_ID = 103
 
-def check_ckpt(checkpoint_path):
-    ckpt = tf.train.Checkpoint(
-                               model=model
-                              )
-    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=10)
-    if tf.train.latest_checkpoint(checkpoint_path):
-      ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
-      log.info(ckpt_manager.latest_checkpoint +' restored')
-      latest_ckpt = int(ckpt_manager.latest_checkpoint[-2:])
-    else:
-        latest_ckpt=0
-        log.info('Training from scratch')
-    return (ckpt_manager, latest_ckpt, ckpt)
-
-# if a checkpoint exists, restore the latest checkpoint.
-ck_pt_mgr, latest_ckpt, ckpt = check_ckpt(file_path.checkpoint_path)
 
 def with_column(x, i, column):
     """
@@ -147,7 +131,7 @@ def topp_topk(logits, p, k):
   sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
   return sample
 
-def draft_summary_sampling(
+def draft_summary_sampling(model,
                            inp, 
                            enc_output, 
                            look_ahead_mask, 
@@ -175,25 +159,13 @@ def draft_summary_sampling(
         embeddings = model.embedding(dec_input)    
 
         # (batch_size, i+1, vocab), (_)            
-        dec_output, dec_logits_i, attention_dist = model.decoder(
-                                                                embeddings, 
-                                                                enc_output, 
-                                                                training, 
-                                                                look_ahead_mask, 
-                                                                padding_mask
-                                                               )
-
-        if config.copy_gen:
-          dec_output = model.decoder.pointer_generator(
-                                                        dec_logits_i, 
-                                                        dec_output,
-                                                        attention_dist,
-                                                        inp,
-                                                        tf.shape(inp)[1], 
-                                                        tf.shape(dec_output)[1], 
-                                                        training=False,
-                                                       )
-        
+        dec_output, attention_dist = model.decoder(inp,
+                                                   embeddings, 
+                                                   enc_output, 
+                                                   training, 
+                                                   look_ahead_mask, 
+                                                   padding_mask
+                                                   )        
 
         # (batch_size, 1, vocab)
         dec_output_i = dec_output[:, -1: ,:]
@@ -208,15 +180,15 @@ def draft_summary_sampling(
         else:
           preds = tf.cast(tf.argmax(dec_output_i, axis=-1), tf.int32)
         dec_outputs += [dec_output_i]
-        dec_logits_i = dec_logits_i[:, -1:, :]
-        dec_logits += [dec_logits_i]
+        #dec_logits_i = dec_logits_i[:, -1:, :]
+        #dec_logits += [dec_logits_i]
         summary += [preds]
         dec_input = with_column(dec_input, i+1, preds)
     summary = tf.concat(summary, axis=1)  
     # (batch_size, seq_len, vocab_len), (batch_size, seq_len), (_)
     return summary, attention_dist
 
-def draft_summary_beam_search(
+def draft_summary_beam_search(model,
                               input_ids, 
                               enc_output, 
                               dec_padding_mask, 
@@ -230,22 +202,12 @@ def draft_summary_beam_search(
     def beam_search_decoder(output):
       # (batch_size, seq_len, d_bert)    
       embeddings = model.embedding(output)
-      predictions, dec_op, attention_weights = model.decoder(
-                                                            embeddings, 
-                                                            enc_output, 
-                                                            False, 
-                                                            None, 
-                                                            dec_padding_mask
-                                                            )
-      if config.copy_gen:
-        predictions = model.decoder.pointer_generator(
-                                                      dec_op[:, -1:, :], 
-                                                      predictions[:, -1:, :],
-                                                      attention_weights[:, :, -1:, :],
-                                                      input_ids,
-                                                      tf.shape(input_ids)[1], 
-                                                      tf.shape(predictions[:, -1:, :])[1], 
-                                                      training=False,
+      predictions, attention_weights = model.decoder(input_ids,
+                                                     embeddings, 
+                                                     enc_output, 
+                                                     False, 
+                                                     None, 
+                                                     dec_padding_mask
                                                      )
       # (batch_size, 1, target_vocab_size)
       return (predictions[:,-1:,:])
@@ -261,16 +223,16 @@ def draft_summary_beam_search(
                         )
             
 
-def refined_summary_sampling(
-                           inp, 
-                           enc_output, 
-                           draft_summary, 
-                           padding_mask, 
-                           sampling_type='greedy', 
-                           temperature=0.9, 
-                           p=0.9, 
-                           k=25,
-                           training=False):
+def refined_summary_sampling(model,
+                             inp, 
+                             enc_output, 
+                             draft_summary, 
+                             padding_mask, 
+                             sampling_type='greedy', 
+                             temperature=0.9, 
+                             p=0.9, 
+                             k=25,
+                             training=False):
         """
         Inference call, builds a refined summary
         
@@ -294,13 +256,13 @@ def refined_summary_sampling(
             context_vectors = model.bert_model(refined_summary_)[0]
             
             # (batch_size, seq_len, d_bert), (_)
-            dec_output, dec_logits_i, attention_dist = model.decoder(
-                                                                    context_vectors,
-                                                                    enc_output,
-                                                                    training=training,
-                                                                    look_ahead_mask=None,
-                                                                    padding_mask=padding_mask
-                                                                  )
+            dec_output,  attention_dist =  model.decoder(inp,
+                                                        context_vectors,
+                                                        enc_output,
+                                                        training=training,
+                                                        look_ahead_mask=None,
+                                                        padding_mask=padding_mask
+                                                      )
             
             # (batch_size, 1, vocab_len)
             dec_output_i = dec_output[:, i:i+1 ,:]
@@ -319,19 +281,23 @@ def refined_summary_sampling(
         return refined_summary, attention_dist
 
 def predict_using_sampling(
+                           model,
                            inp, 
                            draft_decoder_sampling_type='topk',
                            refine_decoder_sampling_type='topk', 
                            temperature=0.9, 
                            p=0.9, 
                            k=25):
+
+  #restore the latest checkpoint.
+  #ckpt.restore(ckpt_manager.latest_checkpoint)
   
   dec_padding_mask = create_padding_mask(inp)
   
   # (batch_size, seq_len, d_bert)
   enc_output = model.bert_model(inp)[0]
   # (batch_size, seq_len, vocab_len), (_)
-  preds_draft_summary, draft_attention_dist = draft_summary_sampling( 
+  preds_draft_summary, draft_attention_dist = draft_summary_sampling( model,
                                                                       inp,
                                                                       enc_output=enc_output,
                                                                       look_ahead_mask=None,
@@ -342,7 +308,7 @@ def predict_using_sampling(
                                                                       k=k,
                                                                     )
   # (batch_size, seq_len, vocab_len), ()
-  preds_refined_summary, refined_attention_dist = refined_summary_sampling(
+  preds_refined_summary, refined_attention_dist = refined_summary_sampling( model,
                                                                             inp,
                                                                             enc_output=enc_output,
                                                                             padding_mask=dec_padding_mask,
@@ -357,6 +323,7 @@ def predict_using_sampling(
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
 def predict_using_beam_search(
+                              model,
                               inp, 
                               beam_size=3, 
                               refine_decoder_sampling_type='nucleus', 
@@ -369,18 +336,24 @@ def predict_using_beam_search(
   enc_output = model.bert_model(inp)[0]
   
   #[batch_size*beam_size, input_Seq_len, d_bert]
-  translated_output_temp = draft_summary_beam_search(inp, enc_output, dec_padding_mask, beam_size)
+  translated_output_temp = draft_summary_beam_search(
+                                                      model, 
+                                                      inp, 
+                                                      enc_output, 
+                                                      dec_padding_mask, 
+                                                      beam_size
+                                                      )
   # Take the sequence with high score (the last one)
   preds_draft_summary = translated_output_temp[0][:,0,:] 
   
-  preds_refined_summary, refined_attention_dist = refined_summary_sampling(
-                                                                        inp,
-                                                                        enc_output=enc_output,
-                                                                        padding_mask=dec_padding_mask,
-                                                                        draft_summary=preds_draft_summary, 
-                                                                        sampling_type=refine_decoder_sampling_type, 
-                                                                        temperature=temperature, 
-                                                                        p=p, 
-                                                                        k=k
-                                                                        )
+  preds_refined_summary, refined_attention_dist = refined_summary_sampling(model,
+                                                                          inp,
+                                                                          enc_output=enc_output,
+                                                                          padding_mask=dec_padding_mask,
+                                                                          draft_summary=preds_draft_summary, 
+                                                                          sampling_type=refine_decoder_sampling_type, 
+                                                                          temperature=temperature, 
+                                                                          p=p, 
+                                                                          k=k
+                                                                          )
   return preds_draft_summary, preds_refined_summary, refined_attention_dist
