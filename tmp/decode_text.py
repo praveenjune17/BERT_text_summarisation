@@ -319,17 +319,12 @@ def refined_summary_sampling(
         return refined_summary, attention_dist
 
 def predict_using_sampling(
-                           ckpt,
-                           ckpt_manager,
                            inp, 
                            draft_decoder_sampling_type='topk',
                            refine_decoder_sampling_type='topk', 
                            temperature=0.9, 
                            p=0.9, 
                            k=25):
-
-  #restore the latest checkpoint.
-  #ckpt.restore(ckpt_manager.latest_checkpoint)
   
   dec_padding_mask = create_padding_mask(inp)
   
@@ -362,16 +357,13 @@ def predict_using_sampling(
   return preds_draft_summary, draft_attention_dist, preds_refined_summary, refined_attention_dist
 
 def predict_using_beam_search(
-                              ckpt,
-                              ckpt_manager,
                               inp, 
                               beam_size=3, 
                               refine_decoder_sampling_type='nucleus', 
                               temperature=0.9, 
                               p=0.9, 
                               k=25):
-  #restore the latest checkpoint.
-  ckpt.restore(ckpt_manager.latest_checkpoint)
+  
   dec_padding_mask = create_padding_mask(inp)
   # (batch_size, seq_len, d_bert)
   enc_output = model.bert_model(inp)[0]
