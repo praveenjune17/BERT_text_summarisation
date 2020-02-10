@@ -42,7 +42,8 @@ def run_eval(ckpt_path='/content/drive/My Drive/Text_summarization/BERT_text_sum
                                    config.tfds_name, 
                                    with_info=True, 
                                    as_supervised=True, 
-                                   data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset'
+                                   data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset',
+                                   builder_kwargs={"version": "2.0.0"}
                                    )
     test_examples = examples['test']
     test_buffer_size = metadata.splits['test'].num_examples
