@@ -20,7 +20,7 @@ hyp = {
 	 'length_penalty' : 1,                       # Beam search hyps . Used only during inference                                                 
 	 'mean_attention_heads':True,                # if False then the attention parameters of the last head will be used
 	 'mean_parameters_of_layers':True,           # if False then the attention parameters of the last layer will be used
-	 'validation_batch_size' : 32
+	 'validation_batch_size' : 8
 	 }                                    
 
 h_parms = Bunch(hyp)
