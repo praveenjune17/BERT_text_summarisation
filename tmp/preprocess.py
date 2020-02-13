@@ -103,18 +103,24 @@ def create_train_data(num_samples_to_train=config.num_examples_to_train,
                       filter_off=False):
 
     if config.use_tfds:
-        examples, metadata = tfds.load(
+        train_examples, _ = tfds.load(
                                        config.tfds_name, 
                                        with_info=True,
                                        as_supervised=True, 
                                        data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset',
-                                       builder_kwargs={"version": "2.0.0"}
+                                       builder_kwargs={"version": "2.0.0"},
+                                       split=tfds.core.ReadInstruction('train', from_=50, to=70, unit='%')
                                       )
-        other_ds = 'validation' if 'validation' in examples else 'test'
-        train_examples = examples['train']
-        valid_examples = examples[other_ds]
-        train_buffer_size = metadata.splits['train'].num_examples
-        valid_buffer_size = metadata.splits[other_ds].num_examples
+        valid_examples, _ = tfds.load(
+                                       config.tfds_name, 
+                                       with_info=True,
+                                       as_supervised=True, 
+                                       data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset',
+                                       builder_kwargs={"version": "2.0.0"},
+                                       split='validation'
+                                      )
+        train_buffer_size = 287113
+        valid_buffer_size = 13368
     else:
         doc, summ = create_dataframe(file_path.train_csv_path, num_samples_to_train)
         X_train, X_test, y_train, y_test = train_test_split(
