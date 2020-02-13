@@ -89,9 +89,11 @@ def write_summary(tar_real, predictions, step, write=config.write_summary_op):
         rouge_score =  avg_rouge_f1.astype('float64')
         bert_f1_score =  np.mean(bert_f1.tolist(), dtype=np.float64)
       except ValueError:
+        log.warning('Problem in calculating the ROUGE scores')
         rouge_score = 0
         bert_f1_score = 0
   else:
+      log.warning('The sentences predicted by the model are empty so setting the scores to 0')
       rouge_score = 0
       bert_f1_score = 0
   
