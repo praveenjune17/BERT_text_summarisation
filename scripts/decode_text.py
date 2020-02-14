@@ -128,7 +128,7 @@ def topp_topk(logits, p, k):
   logits = tf.reshape(logits, (h_parms.batch_size, -1))
   sample = tf.random.categorical(logits, num_samples=1, dtype=tf.int32, seed=1)
   return sample
-
+# TODO stop decoding when the SEP_ID is predicted instead of looping till the end of summary len. 
 def draft_summary_sampling(
                            inp, 
                            enc_output, 
