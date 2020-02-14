@@ -123,7 +123,7 @@ def monitor_run(latest_ckpt,
   monitor_metrics['combined_metric'] = round(tf.reduce_sum([(i*j) for i,j in zip(monitor_metrics['combined_metric'],  
                                                                                  h_parms.combined_metric_weights)]).numpy(), 2)
   log.info(f"combined_metric {monitor_metrics['combined_metric']:4f}")
-  cond = (config.last_recorded_value > monitor_metrics[to_monitor])
+  cond = (config.last_recorded_value < monitor_metrics[to_monitor])
   if (latest_ckpt > config.monitor_only_after) and cond:
     # reset tolerance to zero if the monitor_metric decreases before the tolerance threshold
     config.init_tolerance=0
