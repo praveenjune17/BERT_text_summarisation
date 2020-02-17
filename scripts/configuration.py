@@ -8,7 +8,7 @@ hyp = {
      'doc_length': 512,
      'd_model': 768,                  # the projected word vector dimension
      'dff': 2048,                      # feed forward network hidden parameters
-     'early_stop' : True,
+     'early_stop' : False,
      'eval_after' : 5000,              #Run evaluation after this many samples are trained 
      'init_tolerance':0,
      'input_vocab_size': 30522,        # total vocab size + start and end token
