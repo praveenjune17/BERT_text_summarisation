@@ -109,7 +109,7 @@ def create_train_data(num_samples_to_train=config.num_examples_to_train,
                                        as_supervised=True, 
                                        data_dir='/content/drive/My Drive/Text_summarization/cnn_dataset',
                                        builder_kwargs={"version": "2.0.0"},
-                                       split=tfds.core.ReadInstruction('train', from_=80, to=90, unit='%')
+                                       split=tfds.core.ReadInstruction('train', from_=90, to=100, unit='%')
                                       )
         valid_examples, _ = tfds.load(
                                        config.tfds_name, 
